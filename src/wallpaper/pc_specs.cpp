@@ -78,7 +78,25 @@ static std::wstring RamDetails() {
     return L"";
 }
 
-// Monitores ativos da esquerda para a direita: nome do EDID, resolução e taxa de atualização ("AW2525HM 1920x1080 240Hz").
+// Marca do monitor pelo código de fabricante do EDID (3 letras de 5 bits, big-endian); Dell com modelo "AW..." é
+// Alienware. Código fora da tabela: o nome do modelo.
+static std::wstring Brand(DISPLAYCONFIG_TARGET_DEVICE_NAME const& name) {
+    std::wstring model = name.monitorFriendlyDeviceName;
+    if (!name.flags.edidIdsValid) return model.empty() ? L"Monitor" : model;
+
+    WORD id = _byteswap_ushort(name.edidManufactureId);
+    wchar_t code[4] = {wchar_t(L'@' + (id >> 10 & 31)), wchar_t(L'@' + (id >> 5 & 31)), wchar_t(L'@' + (id & 31)), 0};
+    if (!wcscmp(code, L"DEL") && model.starts_with(L"AW")) return L"Alienware";
+
+    static const std::pair<const wchar_t*, const wchar_t*> brands[] = {
+        {L"DEL", L"Dell"}, {L"AOC", L"AOC"}, {L"SAM", L"Samsung"}, {L"GSM", L"LG"}, {L"ACR", L"Acer"}, {L"AUS", L"ASUS"},
+        {L"BNQ", L"BenQ"}, {L"MSI", L"MSI"}, {L"GBT", L"Gigabyte"}, {L"HPN", L"HP"}, {L"LEN", L"Lenovo"}, {L"PHL", L"Philips"}};
+    for (auto [pnp, brand] : brands)
+        if (!wcscmp(code, pnp)) return brand;
+    return model.empty() ? code : model;
+}
+
+// Monitores ativos da esquerda para a direita: marca e taxa de atualização em uso ("Alienware 240Hz").
 std::vector<std::wstring> ReadMonitors() {
     UINT32 pathCount = 0, modeCount = 0;
     if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount) != ERROR_SUCCESS) return {};
@@ -94,16 +112,14 @@ std::vector<std::wstring> ReadMonitors() {
 
         DISPLAYCONFIG_TARGET_DEVICE_NAME name{};
         name.header = {DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME, sizeof name, path.targetInfo.adapterId, path.targetInfo.id};
-        if (DisplayConfigGetDeviceInfo(&name.header) != ERROR_SUCCESS || !name.monitorFriendlyDeviceName[0])
-            wcscpy_s(name.monitorFriendlyDeviceName, L"Monitor");
+        DisplayConfigGetDeviceInfo(&name.header);
 
-        auto const& source = modes[path.sourceInfo.modeInfoIdx].sourceMode;
         auto rate = path.targetInfo.refreshRate;
         double hertz = rate.Denominator ? double(rate.Numerator) / rate.Denominator : 0;
 
         wchar_t text[128];
-        swprintf_s(text, L"%s %ux%u %.0fHz", name.monitorFriendlyDeviceName, source.width, source.height, hertz);
-        sorted.push_back({source.position.x, text});
+        swprintf_s(text, L"%s %.0fHz", Brand(name).c_str(), hertz);
+        sorted.push_back({modes[path.sourceInfo.modeInfoIdx].sourceMode.position.x, text});
     }
 
     std::sort(sorted.begin(), sorted.end());
