@@ -7,8 +7,9 @@ $ErrorActionPreference = 'Stop'
 
 Assert-NoGame
 if ($Build) { Invoke-Build wallpaper }
-Get-Process FundoVivo -ErrorAction SilentlyContinue | Stop-Process -Force
-Start-Sleep 1
+$old = Get-Process FundoVivo -ErrorAction SilentlyContinue
+$old | Stop-Process -Force
+$old | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
 Start-Process "$Bin\FundoVivo.exe"
 if ($Shot) {
     Start-Sleep 4
