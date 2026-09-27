@@ -2,9 +2,21 @@
 $Root = Split-Path $PSScriptRoot
 $Bin = Join-Path $Root 'bin'
 
-# Para tudo se o jogo estiver aberto: nada de compilar nem reiniciar nada com ele rodando.
+# Para tudo se o jogo estiver em tela cheia (janela cobrindo o monitor inteiro). Em janela, pode seguir.
 function Assert-NoGame {
-    if (Get-Process UAGame -ErrorAction SilentlyContinue) { throw 'Jogo aberto: não compilo nem reinicio nada.' }
+    $game = Get-Process UAGame -ErrorAction SilentlyContinue | Where-Object MainWindowHandle -ne 0 | Select-Object -First 1
+    if (-not $game) { return }
+
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type 'using System; using System.Runtime.InteropServices; public static class GameWindow {
+        public struct RECT { public int Left, Top, Right, Bottom; }
+        [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r); }'
+    $rect = New-Object GameWindow+RECT
+    [void][GameWindow]::GetWindowRect($game.MainWindowHandle, [ref]$rect)
+    $screen = [System.Windows.Forms.Screen]::FromHandle($game.MainWindowHandle).Bounds
+    if ($rect.Left -le $screen.Left -and $rect.Top -le $screen.Top -and $rect.Right -ge $screen.Right -and $rect.Bottom -ge $screen.Bottom) {
+        throw 'Jogo em tela cheia: não compilo nem reinicio nada.'
+    }
 }
 
 # Roda build\build-<nome>.bat e, se falhar, mostra só as linhas que interessam.
