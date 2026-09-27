@@ -40,8 +40,9 @@ static std::wstring Uptime(ULONGLONG minutes) {
     return Format(L"%llumin", minutes);
 }
 
-// O JSON do painel (uptime, specs do PC e monitores), com a cor de cada pedaço: 0 pontuação, 1 chave, 2 string.
-static JsonText BuildJson(PcSpecs const& specs, std::vector<std::wstring> const& monitors, ULONGLONG minutes) {
+// O JSON do painel (uptime, data e hora, specs do PC e monitores), com a cor de cada pedaço: 0 pontuação, 1 chave,
+// 2 string.
+static JsonText BuildJson(PcSpecs const& specs, std::vector<std::wstring> const& monitors, SYSTEMTIME const& now, ULONGLONG minutes) {
     JsonText json;
     auto add = [&](std::wstring const& piece, int color) {
         json.runs.push_back({(UINT32)json.text.size(), (UINT32)piece.size(), color});
@@ -57,6 +58,8 @@ static JsonText BuildJson(PcSpecs const& specs, std::vector<std::wstring> const&
 
     add(L"{\n", 0);
     field(L"  ", L"uptime", JsonString(Uptime(minutes)));
+    field(L"  ", L"date", JsonString(Format(L"%02d/%02d/%04d %02d:%02d:%02d", now.wDay, now.wMonth, now.wYear, now.wHour, now.wMinute,
+                                            now.wSecond)));
     add(L"  ", 0);
     add(L"\"pc\"", 1);
     add(L": {\n", 0);
@@ -144,7 +147,7 @@ void InfoPanel::Render(SYSTEMTIME const& now, int width) {
     if (monitors.empty() || now.wSecond == 0) monitors = ReadMonitors();
 
     bool hasWeather = !std::isnan(weather.temperature) && weather.code >= 0;
-    JsonText json = BuildJson(specs, monitors, GetTickCount64() / 60000);
+    JsonText json = BuildJson(specs, monitors, now, GetTickCount64() / 60000);
     std::wstring temperature = hasWeather ? Format(L"%.0f°", weather.temperature) : L"";
     std::wstring sky = hasWeather ? SkyText(weather.code) : L"";
     std::wstring range = hasWeather && !std::isnan(weather.maximum) ? Format(L"máx %.0f°  ·  mín %.0f°", weather.maximum, weather.minimum) : L"";
@@ -193,8 +196,8 @@ float InfoPanel::Height() const {
 }
 
 // Desenha embaixo dos anéis (a transformação do monitor já está posta): x = borda esquerda do grupo de anéis, y =
-// embaixo das legendas, width = largura do grupo. Clima + JSON são um bitmap refeito só quando o texto muda (no máximo
-// 1x por minuto, pelo uptime); por quadro é um DrawBitmap por monitor.
+// embaixo das legendas, width = largura do grupo. Clima + JSON são um bitmap refeito só quando o texto muda (1x por
+// segundo, pelo relógio); por quadro é um DrawBitmap por monitor.
 void InfoPanel::Draw(ID2D1DeviceContext* screen, float x, float y, float width) {
     if (!dc) Create(screen);
 
