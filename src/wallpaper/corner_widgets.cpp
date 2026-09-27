@@ -34,7 +34,7 @@ void NowPlayingCard::Create(IDWriteFactory* dwrite, float scale) {
     iconFont->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 }
 
-// O cartão aparece e some devagar (0,5 s): fica enquanto a música toca e mais 10 s depois de pausar (dá tempo de
+// O cartão aparece e some devagar (0,5 s): fica enquanto a música toca e mais 5 s depois de pausar (dá tempo de
 // apertar play de novo). Na troca de música some, troca o texto (e a capa) e volta. A capa desta música entra com
 // fade quando chega. O título deixa espaço para os botões.
 void NowPlayingCard::Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowPlaying const& song, CornerLayout const& layout, float dt) {
