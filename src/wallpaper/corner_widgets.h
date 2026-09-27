@@ -18,7 +18,7 @@ struct CornerLayout {
     float scale;
 };
 
-constexpr float kPausedGrace = 5;
+constexpr float kPausedGrace = 3;
 
 D2D1_RECT_F MediaButtonRect(CornerLayout const& layout, int button);
 
