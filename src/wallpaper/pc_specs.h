@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 struct PcSpecs {
     std::wstring cpu;
@@ -9,3 +10,4 @@ struct PcSpecs {
 };
 
 PcSpecs ReadPcSpecs();
+std::vector<std::wstring> ReadMonitors();

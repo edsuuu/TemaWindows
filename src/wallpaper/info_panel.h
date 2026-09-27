@@ -25,6 +25,7 @@ private:
     ComPtr<ID2D1Bitmap1> bitmap;
     WeatherIcons icons;
     PcSpecs specs;
+    std::vector<std::wstring> monitors;
     Weather weather;
     std::wstring key;
     int bitmapWidth = 0;

@@ -51,12 +51,12 @@ static void AlignHeaderToggle(FrameworkElement const& toggle) {
     CollapseToggleSpacer(toggle, 3);
 }
 
-// Voltar das subpáginas com o hover arredondado (cantos 8, mais curvado que o padrão). Chamado no Loaded:
-// quando o botão nasce, o cabeçalho acima dele às vezes ainda não está ligado.
+// Voltar das subpáginas com o hover arredondado: canto de cima à esquerda 8, acompanhando a curva do painel; os outros
+// 4. Chamado no Loaded: quando o botão nasce, o cabeçalho acima dele às vezes ainda não está ligado.
 static void RoundBackButton(FrameworkElement const& button) {
     if (!IsPageHeaderPart(button, 4) || button.as<Controls::Control>().CornerRadius().TopLeft == 8) return;
 
-    KeepValue(button, Controls::Control::CornerRadiusProperty(), winrt::box_value(CornerRadius{8, 8, 8, 8}), kMaxFights);
+    KeepValue(button, Controls::Control::CornerRadiusProperty(), winrt::box_value(CornerRadius{8, 4, 4, 4}), kMaxFights);
 }
 
 // Barra de tempo da música embaixo dos botões do cartão de mídia, numa linha nova da grade dele (uma vez só).

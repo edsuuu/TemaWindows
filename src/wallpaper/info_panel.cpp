@@ -40,8 +40,8 @@ static std::wstring Uptime(ULONGLONG minutes) {
     return Format(L"%llumin", minutes);
 }
 
-// O JSON do painel (uptime e specs do PC), com a cor de cada pedaço: 0 pontuação, 1 chave, 2 string.
-static JsonText BuildJson(PcSpecs const& specs, ULONGLONG minutes) {
+// O JSON do painel (uptime, specs do PC e monitores), com a cor de cada pedaço: 0 pontuação, 1 chave, 2 string.
+static JsonText BuildJson(PcSpecs const& specs, std::vector<std::wstring> const& monitors, ULONGLONG minutes) {
     JsonText json;
     auto add = [&](std::wstring const& piece, int color) {
         json.runs.push_back({(UINT32)json.text.size(), (UINT32)piece.size(), color});
@@ -62,7 +62,18 @@ static JsonText BuildJson(PcSpecs const& specs, ULONGLONG minutes) {
     add(L": {\n", 0);
     field(L"    ", L"cpu", JsonString(specs.cpu));
     field(L"    ", L"gpu", JsonString(specs.gpu));
-    field(L"    ", L"ram", JsonString(specs.ram), true);
+    field(L"    ", L"ram", JsonString(specs.ram), monitors.empty());
+    if (!monitors.empty()) {
+        add(L"    ", 0);
+        add(L"\"monitors\"", 1);
+        add(L": [\n", 0);
+        for (size_t i = 0; i < monitors.size(); i++) {
+            add(L"      ", 0);
+            add(JsonString(monitors[i]), 2);
+            add(i + 1 < monitors.size() ? L",\n" : L"\n", 0);
+        }
+        add(L"    ]\n", 0);
+    }
     add(L"  }\n", 0);
     add(L"}", 0);
     return json;
@@ -121,17 +132,19 @@ void InfoPanel::DrawWeatherColumn(float center, float halfWidth, float top, std:
     PaintText(range, rangeFont.Get(), {left, y, right, y + kRangeRow * scale}, 0.69f, 0.95f);
 }
 
-// 1x por segundo: dados novos e, se o texto mudou, o bitmap do bloco (largura = a dos anéis). O JSON fica à esquerda,
-// rente aos anéis; o clima fica à direita dele, em coluna centralizada no espaço que sobra (sem passar da borda
-// direita) e centralizada na altura do JSON.
+// 1x por segundo: dados novos (monitores 1x por minuto, para pegar troca de resolução ou de Hz) e, se o texto mudou, o
+// bitmap do bloco (largura = a dos anéis). O JSON fica à esquerda, rente aos anéis; o clima fica à direita dele, em
+// coluna centralizada no espaço que sobra (sem passar da borda direita) e centralizada na altura do JSON.
 void InfoPanel::Render(SYSTEMTIME const& now, int width) {
     if (WeatherVersion() != weatherVersion) {
         weatherVersion = WeatherVersion();
         weather = ParseWeather(WeatherJson(), now);
     }
 
+    if (monitors.empty() || now.wSecond == 0) monitors = ReadMonitors();
+
     bool hasWeather = !std::isnan(weather.temperature) && weather.code >= 0;
-    JsonText json = BuildJson(specs, GetTickCount64() / 60000);
+    JsonText json = BuildJson(specs, monitors, GetTickCount64() / 60000);
     std::wstring temperature = hasWeather ? Format(L"%.0f°", weather.temperature) : L"";
     std::wstring sky = hasWeather ? SkyText(weather.code) : L"";
     std::wstring range = hasWeather && !std::isnan(weather.maximum) ? Format(L"máx %.0f°  ·  mín %.0f°", weather.maximum, weather.minimum) : L"";

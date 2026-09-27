@@ -78,6 +78,40 @@ static std::wstring RamDetails() {
     return L"";
 }
 
+// Monitores ativos da esquerda para a direita: nome do EDID, resolução e taxa de atualização ("AW2525HM 1920x1080 240Hz").
+std::vector<std::wstring> ReadMonitors() {
+    UINT32 pathCount = 0, modeCount = 0;
+    if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount) != ERROR_SUCCESS) return {};
+
+    std::vector<DISPLAYCONFIG_PATH_INFO> paths(pathCount);
+    std::vector<DISPLAYCONFIG_MODE_INFO> modes(modeCount);
+    if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, paths.data(), &modeCount, modes.data(), nullptr) != ERROR_SUCCESS) return {};
+
+    std::vector<std::pair<LONG, std::wstring>> sorted;
+    for (UINT32 i = 0; i < pathCount; i++) {
+        auto const& path = paths[i];
+        if (path.sourceInfo.modeInfoIdx >= modeCount) continue;
+
+        DISPLAYCONFIG_TARGET_DEVICE_NAME name{};
+        name.header = {DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME, sizeof name, path.targetInfo.adapterId, path.targetInfo.id};
+        if (DisplayConfigGetDeviceInfo(&name.header) != ERROR_SUCCESS || !name.monitorFriendlyDeviceName[0])
+            wcscpy_s(name.monitorFriendlyDeviceName, L"Monitor");
+
+        auto const& source = modes[path.sourceInfo.modeInfoIdx].sourceMode;
+        auto rate = path.targetInfo.refreshRate;
+        double hertz = rate.Denominator ? double(rate.Numerator) / rate.Denominator : 0;
+
+        wchar_t text[128];
+        swprintf_s(text, L"%s %ux%u %.0fHz", name.monitorFriendlyDeviceName, source.width, source.height, hertz);
+        sorted.push_back({source.position.x, text});
+    }
+
+    std::sort(sorted.begin(), sorted.end());
+    std::vector<std::wstring> monitors;
+    for (auto& [x, text] : sorted) monitors.push_back(std::move(text));
+    return monitors;
+}
+
 // Specs do PC para o JSON do painel: processador, placa de vídeo e RAM (tamanho + tipo/velocidade).
 PcSpecs ReadPcSpecs() {
     ULONGLONG kilobytes = 0;
