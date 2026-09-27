@@ -16,27 +16,24 @@ static float CornerFor(float gapX, float gapY, float panelRadius) {
     return gap < panelRadius ? std::max(kItemRadius, panelRadius - gap) : kItemRadius;
 }
 
-// Põe os cantos no botão e nas bordas do template dele com o mesmo tamanho (a placa do hover).
+// Põe os cantos na placa do hover do ícone (Grid#ContainerGrid > Border#BackgroundBorder, 40x40).
 static void SetItemCorners(Controls::Control const& item, CornerRadius const& corners) {
-    if (item.CornerRadius() != corners) item.CornerRadius(corners);
+    auto plate = FindDescendant(item, L"BackgroundBorder", 3).try_as<Controls::Border>();
+    if (!plate || plate.CornerRadius() == corners) return;
 
-    for (int i = 0, count = VisualTreeHelper::GetChildrenCount(item); i < count; i++) {
-        auto root = VisualTreeHelper::GetChild(item, i);
-        for (int j = 0, children = VisualTreeHelper::GetChildrenCount(root); j < children; j++) {
-            auto plate = VisualTreeHelper::GetChild(root, j).try_as<Controls::Border>();
-            if (plate && plate.ActualWidth() == item.ActualWidth() && plate.ActualHeight() == item.ActualHeight() && plate.CornerRadius() != corners)
-                plate.CornerRadius(corners);
-        }
-    }
+    plate.CornerRadius(corners);
+    if (corners != CornerRadius{kItemRadius, kItemRadius, kItemRadius, kItemRadius})
+        Log(L"hover de ícone oculto na ponta: cantos %.0f/%.0f/%.0f/%.0f", corners.TopLeft, corners.TopRight, corners.BottomRight, corners.BottomLeft);
 }
 
 // Hover dos ícones das pontas acompanhando a curva do painel, como o Voltar das Configurações Rápidas: percorre a
-// ilha do painel atrás dos NotifyItemIcon e calcula cada canto pela distância até a borda do painel.
+// ilha do painel atrás dos ícones (SystemTray.NotifyIconView, dentro do WrapGrid) e calcula cada canto pela distância
+// até a borda do painel.
 static void RoundCornerItems(DependencyObject const& node, FrameworkElement const& panel, float radius) {
     for (int i = 0, count = VisualTreeHelper::GetChildrenCount(node); i < count; i++) {
         auto child = VisualTreeHelper::GetChild(node, i);
         auto item = child.try_as<Controls::Control>();
-        if (!item || item.Name() != L"NotifyItemIcon") {
+        if (!item || ClassOf(child) != L"SystemTray.NotifyIconView") {
             RoundCornerItems(child, panel, radius);
             continue;
         }
@@ -65,7 +62,9 @@ void ApplyOverflowGlass(Controls::Border const& border) {
     border.LayoutUpdated([border, radius](auto&&, auto&&) {
         try {
             if (auto root = border.XamlRoot()) RoundCornerItems(root.Content(), border, radius);
-        } catch (...) {}
+        } catch (...) {
+            Log(L"erro nos cantos dos ícones ocultos: %08X", winrt::to_hresult());
+        }
     });
     Log(L"ícones ocultos com vidro (%.0fx%.0f)", border.ActualWidth(), border.ActualHeight());
 }

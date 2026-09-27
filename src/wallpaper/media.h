@@ -15,3 +15,4 @@ struct NowPlaying {
 int CoverSize();
 void StartMediaWatcher();
 NowPlaying CurrentMedia();
+void SendMediaCommand(int button);

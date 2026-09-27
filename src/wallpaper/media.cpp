@@ -70,7 +70,7 @@ static void UpdateCover(GlobalSystemMediaTransportControlsSessionMediaProperties
     }
 }
 
-// O que o Spotify está tocando agora (só leitura: não controla nada); vazio se ele não tiver sessão de mídia.
+// O que o Spotify está tocando agora (tocando ou pausado); vazio se ele não tiver sessão de mídia.
 static NowPlaying ReadSpotify(GlobalSystemMediaTransportControlsSessionManager const& manager, CoverState& cover) {
     NowPlaying song;
 
@@ -117,6 +117,30 @@ static void MediaLoop() {
 // Começa a acompanhar o Spotify numa thread à parte.
 void StartMediaWatcher() {
     std::thread(MediaLoop).detach();
+}
+
+// Comando para a sessão do Spotify pelos controles de mídia do Windows (0 voltar, 1 tocar/pausar, 2 avançar), numa
+// thread à parte. Tocar/pausar troca o ícone na hora, sem esperar a próxima leitura.
+void SendMediaCommand(int button) {
+    if (button == 1) {
+        std::lock_guard lock(g_mutex);
+        g_nowPlaying.playing = !g_nowPlaying.playing;
+    }
+
+    std::thread([button] {
+        try {
+            winrt::init_apartment();
+            auto manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();
+            for (auto session : manager.GetSessions()) {
+                if (std::wstring_view(session.SourceAppUserModelId()).find(L"Spotify") == std::wstring_view::npos) continue;
+
+                if (button == 0) session.TrySkipPreviousAsync().get();
+                if (button == 1) session.TryTogglePlayPauseAsync().get();
+                if (button == 2) session.TrySkipNextAsync().get();
+                break;
+            }
+        } catch (...) {}
+    }).detach();
 }
 
 // Última leitura do Spotify.

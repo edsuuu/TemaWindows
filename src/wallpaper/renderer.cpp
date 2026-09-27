@@ -3,6 +3,7 @@
 #include "wallpaper/desktop.h"
 #include "wallpaper/golden_theme.h"
 #include "wallpaper/info_panel.h"
+#include "wallpaper/media_buttons.h"
 #include "wallpaper/morph_theme.h"
 #include "wallpaper/nbhd_theme.h"
 #include "wallpaper/timing.h"
@@ -199,6 +200,7 @@ private:
     void DrawBackground(Surface const& surface, Monitors const& monitors, Block const& block, double now);
     void DrawOverlay(Surface const& surface, Monitors const& monitors, Block const& block, double now);
     void RenderFrame(Surface const& surface, Monitors const& monitors, NowPlaying const& song);
+    void UpdateButtons(HWND parent, Monitors const& monitors, bool hidden);
     void WaitNextFrame(double frameStart);
 };
 
@@ -244,7 +246,7 @@ void Wallpaper::UpdateWidgets(NowPlaying const& song, Monitors const& monitors, 
     equalizer.Read(capture.Get());
     if (card.alpha > 0 || capture) equalizer.Update(capture != nullptr, dt);
     card.Update(g.dc.Get(), g.dwrite.Get(), song, monitors.layout, dt);
-    presence = std::clamp(presence + (song.playing && !song.title.empty() ? 2 : -2) * dt, 0.f, 1.f);
+    presence = std::clamp(presence + (!song.title.empty() ? 2 : -2) * dt, 0.f, 1.f);
 
     if (now - lastReading <= 1.5) return;
     lastReading = now;
@@ -313,9 +315,10 @@ void Wallpaper::DrawOverlay(Surface const& surface, Monitors const& monitors, Bl
         nbhd.Draw(dc, g.brush.Get(), g.round.Get(), monitors.areas, float(fmod(now - start, 84000.0)), capture != nullptr, bass);
     }
 
-    for (auto& corner : monitors.corners) {
+    for (int i = 0; i < int(monitors.corners.size()); i++) {
+        auto const& corner = monitors.corners[i];
         dc->SetTransform(corner);
-        if (a > 0) card.Draw(dc, g.brush.Get(), l, equalizer, a);
+        if (a > 0) card.Draw(dc, g.brush.Get(), l, equalizer, a, HoveredMediaButton(i), PressedMediaButton(i));
         rings.Draw(dc, g.brush.Get(), g.round.Get(), corner, l, block.ringsY);
         panel.Draw(dc, l.cardLeft, block.ringsY + l.ringRadius + 22 * l.scale, l.right - l.cardLeft);
     }
@@ -323,6 +326,20 @@ void Wallpaper::DrawOverlay(Surface const& surface, Monitors const& monitors, Bl
     dc->SetTransform(D2D1::Matrix3x2F::Identity());
     dc->EndDraw();
     dc->SetTarget(nullptr);
+}
+
+// Janelas que pegam o clique dos botões do cartão, uma por monitor, sobre os três botões (só com o cartão aparecendo e
+// o fundo visível).
+void Wallpaper::UpdateButtons(HWND parent, Monitors const& monitors, bool hidden) {
+    D2D1_RECT_F first = MediaButtonRect(monitors.layout, 0), last = MediaButtonRect(monitors.layout, 2);
+    std::vector<RECT> rects;
+
+    for (auto const& corner : monitors.corners) {
+        RECT r{LONG(first.left + corner._31), LONG(first.top + corner._32), LONG(last.right + corner._31), LONG(last.bottom + corner._32)};
+        MapWindowPoints(parent, HWND_DESKTOP, (POINT*)&r, 2);
+        rects.push_back(r);
+    }
+    PlaceMediaButtons(rects, card.alpha > 0.5f && !hidden);
 }
 
 // Um quadro inteiro.
@@ -364,6 +381,7 @@ void Wallpaper::RunSession(HWND parent, Surface const& surface) {
         if (now - lastCheck > 500) {
             lastCheck = now;
             if (!CheckState(parent, surface, song, now, hidden)) break;
+            UpdateButtons(parent, monitors, hidden);
         }
 
         if (hidden && drawn) {

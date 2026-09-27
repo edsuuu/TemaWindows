@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstdio>
 
+constexpr float kMediaButton = 30;
+
 // Fonte de uma linha com "…" no fim quando o texto não cabe.
 static ComPtr<IDWriteTextFormat> TrimmedFont(IDWriteFactory* dwrite, const wchar_t* family, float pixels, DWRITE_FONT_WEIGHT weight) {
     auto font = SingleLineFont(dwrite, family, pixels, weight);
@@ -16,23 +18,36 @@ static ComPtr<IDWriteTextFormat> TrimmedFont(IDWriteFactory* dwrite, const wchar
     return font;
 }
 
-// Fontes do título e do artista.
+// Botão do cartão (0 voltar, 1 tocar/pausar, 2 avançar): quadrados de 30 DIPs na linha do título, colados na borda
+// direita.
+D2D1_RECT_F MediaButtonRect(CornerLayout const& layout, int button) {
+    const float s = layout.scale, size = kMediaButton * s, top = roundf(layout.top + 2 * s) - 2 * s, left = layout.right - (3 - button) * size;
+    return {left, top, left + size, top + size};
+}
+
+// Fontes do título, do artista e dos ícones dos botões.
 void NowPlayingCard::Create(IDWriteFactory* dwrite, float scale) {
     titleFont = TrimmedFont(dwrite, L"Segoe UI Variable Display", 21 * scale, DWRITE_FONT_WEIGHT_SEMI_LIGHT);
     artistFont = TrimmedFont(dwrite, L"Segoe UI Variable Text", 13.5f * scale, DWRITE_FONT_WEIGHT_NORMAL);
+    iconFont = SingleLineFont(dwrite, L"Segoe Fluent Icons", 14 * scale);
+    iconFont->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+    iconFont->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 }
 
-// O cartão aparece e some devagar (0,5 s); na troca de música some, troca o texto (e a capa) e volta. A capa desta
-// música entra com fade quando chega.
+// O cartão aparece e some devagar (0,5 s) e fica enquanto o Spotify tiver música, tocando ou pausada (para os botões
+// continuarem ali); na troca de música some, troca o texto (e a capa) e volta. A capa desta música entra com fade
+// quando chega. O título deixa espaço para os botões.
 void NowPlayingCard::Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowPlaying const& song, CornerLayout const& layout, float dt) {
     bool changed = song.title != title || song.artist != artist;
-    alpha = std::clamp(alpha + (song.playing && !song.title.empty() && !changed ? 2 : -2) * dt, 0.f, 1.f);
+    alpha = std::clamp(alpha + (!song.title.empty() && !changed ? 2 : -2) * dt, 0.f, 1.f);
+    playing = song.playing;
 
     if (changed && alpha == 0) {
         float width = layout.right - layout.textLeft;
         title = song.title;
         artist = song.artist;
-        dwrite->CreateTextLayout(title.c_str(), (UINT)title.size(), titleFont.Get(), width, 30 * layout.scale, &titleLayout);
+        dwrite->CreateTextLayout(title.c_str(), (UINT)title.size(), titleFont.Get(), width - (3 * kMediaButton + 6) * layout.scale,
+                                 30 * layout.scale, &titleLayout);
         dwrite->CreateTextLayout(artist.c_str(), (UINT)artist.size(), artistFont.Get(), width, 22 * layout.scale, &artistLayout);
         cover = nullptr;
         coverBrush = nullptr;
@@ -52,11 +67,29 @@ void NowPlayingCard::Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowP
     coverAlpha = std::min(coverAlpha + 2 * dt, 1.f);
 }
 
+// Botões ⏮ ⏯ ⏭ (ícones da Segoe Fluent Icons): o que está sob o mouse ganha um fundo claro arredondado, mais claro
+// enquanto apertado. O do meio mostra pausa tocando e play pausado.
+void NowPlayingCard::DrawButtons(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility, int hovered,
+                                 int pressed) {
+    const wchar_t* glyphs[3] = {L"\xE892", playing ? L"\xE769" : L"\xE768", L"\xE893"};
+
+    for (int i = 0; i < 3; i++) {
+        D2D1_RECT_F box = MediaButtonRect(layout, i);
+        if (i == hovered) {
+            D2D1_ROUNDED_RECT plate{box, 6 * layout.scale, 6 * layout.scale};
+            brush->SetColor({1, 1, 1, (i == pressed ? 0.16f : 0.09f) * visibility});
+            dc->FillRoundedRectangle(plate, brush);
+        }
+        brush->SetColor({0.92f, 0.92f, 0.92f, 0.95f * visibility});
+        dc->DrawText(glyphs[i], 1, iconFont.Get(), box, brush);
+    }
+}
+
 // Cartão de largura fixa no canto: capa à esquerda (cantos levemente arredondados; enquanto não chega, um quadrado bem
-// apagado no lugar), título (~#F2F2F2) e artista (~#C8C8C8) colados nela até a borda direita, e o equalizador na base
-// da capa, de ponta a ponta, com graves à esquerda e agudos à direita.
+// apagado no lugar), título (~#F2F2F2) e artista (~#C8C8C8) colados nela até a borda direita, os botões na linha do
+// título e o equalizador na base da capa, de ponta a ponta, com graves à esquerda e agudos à direita.
 void NowPlayingCard::Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, Equalizer const& equalizer,
-                          float visibility) {
+                          float visibility, int hovered, int pressed) {
     const float s = layout.scale, top = roundf(layout.top + 2 * s), size = float(CoverSize());
     const float left = layout.textLeft, width = layout.right - layout.textLeft;
 
@@ -64,6 +97,7 @@ void NowPlayingCard::Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, C
     dc->DrawTextLayout({left, top - 2 * s}, titleLayout.Get(), brush);
     brush->SetColor({0.78f, 0.78f, 0.78f, 0.95f * visibility});
     dc->DrawTextLayout({left, top + 28 * s}, artistLayout.Get(), brush);
+    DrawButtons(dc, brush, layout, visibility, hovered, pressed);
 
     const float barWidth = roundf(width / Equalizer::kBands * 0.5f), step = (width - barWidth) / (Equalizer::kBands - 1), base = top + size;
     for (int i = 0; i < Equalizer::kBands; i++) {

@@ -18,16 +18,20 @@ struct CornerLayout {
     float scale;
 };
 
+D2D1_RECT_F MediaButtonRect(CornerLayout const& layout, int button);
+
 struct NowPlayingCard {
     float alpha = 0;
 
     void Create(IDWriteFactory* dwrite, float scale);
     void Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowPlaying const& song, CornerLayout const& layout, float dt);
-    void Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, Equalizer const& equalizer, float visibility);
+    void Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, Equalizer const& equalizer, float visibility,
+              int hovered, int pressed);
 
 private:
     ComPtr<IDWriteTextFormat> titleFont;
     ComPtr<IDWriteTextFormat> artistFont;
+    ComPtr<IDWriteTextFormat> iconFont;
     ComPtr<IDWriteTextLayout> titleLayout;
     ComPtr<IDWriteTextLayout> artistLayout;
     ComPtr<ID2D1BitmapBrush> coverBrush;
@@ -35,6 +39,10 @@ private:
     std::wstring title;
     std::wstring artist;
     float coverAlpha = 0;
+    bool playing = false;
+
+    void DrawButtons(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility, int hovered,
+                     int pressed);
 };
 
 struct Rings {

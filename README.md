@@ -36,6 +36,8 @@ Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin
   equalizador, anéis de CPU/RAM/GPU/rede com temperaturas (HWiNFO e NVML), clima e um JSON com uptime, data e hora,
   specs e monitores. Pausa com jogo, tela cheia ou tela bloqueada (o overlay do UnkvoidClips não conta). Põe o ícone
   com degradê nas pastas da área de trabalho, inclusive nas novas (`Pastas` = 0 desliga; pula repositórios git).
+  Botões ⏮ ⏯ ⏭ clicáveis no cartão da música: o clique cai em janelas invisíveis (em camada, alfa 1) filhas do
+  Progman, acima dos ícones, e vira comando nos controles de mídia do Windows (sem hook de mouse).
 
 Autostart: `HKCU\...\Run` (`TemaBarra`, `TemaMenus`, `TemaJanelas`, via `rundll32 bin\<dll>,Run`) e `HKLM\...\Run`
 (`FundoVivo`, para todos os usuários). Tela de bloqueio: `HKLM\...\PersonalizationCSP` aponta para
