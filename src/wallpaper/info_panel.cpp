@@ -13,11 +13,23 @@ constexpr float kIconSize = 48;
 constexpr float kTemperatureRow = 42;
 constexpr float kSkyRow = 20;
 constexpr float kRangeRow = 18;
+constexpr float kWeatherGap = 28;
 
 struct JsonText {
     std::wstring text;
     std::vector<std::tuple<UINT32, UINT32, int>> runs;
 };
+
+// Largura das linhas do JSON (fonte monoespaçada) que ficam na altura da coluna do clima, de `top` a `bottom`.
+static float WidthBeside(std::wstring const& text, float lineHeight, float charWidth, float top, float bottom) {
+    float widest = 0, y = 0;
+    for (size_t start = 0; start <= text.size(); y += lineHeight) {
+        size_t end = std::min(text.find(L'\n', start), text.size());
+        if (y + lineHeight > top && y < bottom) widest = std::max(widest, (end - start) * charWidth);
+        start = end + 1;
+    }
+    return widest;
+}
 
 // swprintf para std::wstring.
 template <class... Args>
@@ -48,24 +60,24 @@ static JsonText BuildJson(PcSpecs const& specs, std::vector<std::wstring> const&
         json.runs.push_back({(UINT32)json.text.size(), (UINT32)piece.size(), color});
         json.text += piece;
     };
-    auto field = [&](const wchar_t* indent, const wchar_t* key, std::wstring const& value, bool last = false) {
+    auto field = [&](const wchar_t* indent, const wchar_t* key, std::wstring const& value, const wchar_t* end = L",\n") {
         add(indent, 0);
         add(L"\"" + std::wstring(key) + L"\"", 1);
         add(L": ", 0);
         add(value, 2);
-        add(last ? L"\n" : L",\n", 0);
+        add(end, 0);
     };
 
     add(L"{\n", 0);
-    field(L"  ", L"uptime", JsonString(Uptime(minutes)));
-    field(L"  ", L"date", JsonString(Format(L"%02d/%02d/%04d %02d:%02d:%02d", now.wDay, now.wMonth, now.wYear, now.wHour, now.wMinute,
-                                            now.wSecond)));
+    field(L"  ", L"uptime", JsonString(Uptime(minutes)), L", ");
+    field(L"", L"date", JsonString(Format(L"%02d/%02d/%04d %02d:%02d:%02d", now.wDay, now.wMonth, now.wYear, now.wHour, now.wMinute,
+                                          now.wSecond)));
     add(L"  ", 0);
     add(L"\"pc\"", 1);
     add(L": {\n", 0);
     field(L"    ", L"cpu", JsonString(specs.cpu));
     field(L"    ", L"gpu", JsonString(specs.gpu));
-    field(L"    ", L"ram", JsonString(specs.ram), monitors.empty());
+    field(L"    ", L"ram", JsonString(specs.ram), monitors.empty() ? L"\n" : L",\n");
     if (!monitors.empty()) {
         add(L"    ", 0);
         add(L"\"monitors\"", 1);
@@ -104,8 +116,9 @@ void InfoPanel::Create(ID2D1DeviceContext* screen) {
         font->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
         font->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
     }
-    codeFont = SingleLineFont(dwrite.Get(), L"Cascadia Code", 12 * scale);
+    codeFont = SingleLineFont(dwrite.Get(), L"Cascadia Code", 11 * scale);
     codeFont->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, kLineHeight * scale, 14 * scale);
+    charWidth = TextWidth(dwrite.Get(), L"0000000000", codeFont.Get()) / 10;
 
     factory->CreateStrokeStyle({D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_LINE_JOIN_ROUND, 10, D2D1_DASH_STYLE_SOLID, 0},
                                nullptr, 0, &round);
@@ -136,8 +149,8 @@ void InfoPanel::DrawWeatherColumn(float center, float halfWidth, float top, std:
 }
 
 // 1x por segundo: dados novos (monitores 1x por minuto, para pegar troca de resolução ou de Hz) e, se o texto mudou, o
-// bitmap do bloco (largura = a dos anéis). O JSON fica à esquerda, rente aos anéis; o clima fica à direita dele, em
-// coluna centralizada no espaço que sobra (sem passar da borda direita) e centralizada na altura do JSON.
+// bitmap do bloco (largura = a do bloco do canto). O clima fica em coluna logo à direita das linhas do JSON que estão
+// ao lado dele, centralizado na altura do JSON; JSON + clima ficam centralizados no bloco, embaixo dos anéis.
 void InfoPanel::Render(SYSTEMTIME const& now, int width) {
     if (WeatherVersion() != weatherVersion) {
         weatherVersion = WeatherVersion();
@@ -173,18 +186,20 @@ void InfoPanel::Render(SYSTEMTIME const& now, int width) {
         bitmapHeight = height;
     }
 
+    float columnTop = std::round((height - columnHeight) / 2);
+    float widest = hasWeather ? std::max({kIconSize * scale, TextWidth(dwrite.Get(), temperature, temperatureFont.Get()),
+                                          TextWidth(dwrite.Get(), sky, skyFont.Get()), TextWidth(dwrite.Get(), range, rangeFont.Get())})
+                              : 0;
+    float beside = WidthBeside(json.text, kLineHeight * scale, charWidth, columnTop, columnTop + columnHeight);
+    float columnLeft = hasWeather ? beside + kWeatherGap * scale : 0;
+    float x = std::round((width - std::max(metrics.width, columnLeft + widest)) / 2);
+
     dc->SetTarget(bitmap.Get());
     dc->BeginDraw();
     dc->Clear({0, 0, 0, 0});
     dc->SetTransform(D2D1::Matrix3x2F::Identity());
-    dc->DrawTextLayout({0, 0}, layout.Get(), jsonColors[0].Get());
-
-    if (hasWeather) {
-        float widest = std::max({kIconSize * scale, TextWidth(dwrite.Get(), temperature, temperatureFont.Get()),
-                                 TextWidth(dwrite.Get(), sky, skyFont.Get()), TextWidth(dwrite.Get(), range, rangeFont.Get())});
-        float center = std::min(metrics.width + (width - metrics.width) / 2, width - widest / 2);
-        DrawWeatherColumn(std::round(center), widest / 2 + 1, std::round((height - columnHeight) / 2), temperature, sky, range);
-    }
+    dc->DrawTextLayout({x, 0}, layout.Get(), jsonColors[0].Get());
+    if (hasWeather) DrawWeatherColumn(std::round(x + columnLeft + widest / 2), widest / 2 + 1, columnTop, temperature, sky, range);
 
     dc->EndDraw();
     dc->SetTarget(nullptr);
@@ -195,8 +210,8 @@ float InfoPanel::Height() const {
     return bitmap ? kGapBelowRings * scale + bitmapHeight : 0;
 }
 
-// Desenha embaixo dos anéis (a transformação do monitor já está posta): x = borda esquerda do grupo de anéis, y =
-// embaixo das legendas, width = largura do grupo. Clima + JSON são um bitmap refeito só quando o texto muda (1x por
+// Desenha embaixo dos anéis (a transformação do monitor já está posta): x = borda esquerda da capa da música, y =
+// embaixo das legendas, width = largura do bloco do canto. Clima + JSON são um bitmap refeito só quando o texto muda (1x por
 // segundo, pelo relógio); por quadro é um DrawBitmap por monitor.
 void InfoPanel::Draw(ID2D1DeviceContext* screen, float x, float y, float width) {
     if (!dc) Create(screen);

@@ -13,10 +13,10 @@ src\settings\   TemaJanelas.dll (SystemSettings)
 src\wallpaper\  FundoVivo.exe   (janela filha do WorkerW, atrás dos ícones da área de trabalho)
 build\          build-<projeto>.bat e build-all.bat (intermediários em build\obj\, apagados no fim)
 bin\            os quatro binários
-assets\         fundo.png (tema golden e papel de parede estático), fundo-morph.bin (tema loop), bloqueio-alga.png
+assets\         fundo.png (tema golden e papel de parede estático), fundo-morph.bin (tema loop), bloqueio-alga.png, folder.ico (ícone de pasta)
 cache\          cache-clima.txt (última resposta do Open-Meteo)
 logs\           <binário>.log de cada DLL
-tools\          reload-*.ps1, theme.ps1, capture.exe, capture-wallpaper.exe, effects-test.exe
+tools\          reload-*.ps1, theme.ps1, capture.exe, capture-wallpaper.exe, effects-test.exe, folder-icon.ps1 (gera o folder.ico)
 ```
 
 Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin\`.
@@ -24,8 +24,8 @@ Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin
 ## Componentes
 
 - **TemaBarra** — logo do Iniciar com degradê, blur no fundo da barra, indicador de execução cinza, vidro na caixa de
-  pesquisa e no painel dos ícones ocultos (^), sem anel de foco. Injeta no Explorer via `InitializeXamlDiagnosticsEx`
-  e reinjeta quando ele reinicia.
+  pesquisa e no painel dos ícones ocultos (^), com o hover dos ícones das pontas acompanhando a curva, sem anel de
+  foco. Injeta no Explorer via `InitializeXamlDiagnosticsEx` e reinjeta quando ele reinicia.
 - **TemaMenus** — vidro liso no Iniciar, pesquisa, Configurações Rápidas e notificações; Iniciar no estilo do conceito
   (barra lateral com os botões nativos de conta/energia, Início/Apps/Criar, pastas na largura toda, lupa com degradê).
   Nas Configurações Rápidas: barra de tempo da música no cartão de mídia (só leitura, atualiza só com o painel aberto),
@@ -33,8 +33,9 @@ Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin
   à direita.
 - **TemaJanelas** — vidro nas Configurações.
 - **FundoVivo** — papel de parede animado (temas golden, nbhd e loop) com os widgets no canto: música do Spotify com
-  equalizador, anéis de CPU/RAM/GPU/rede com temperaturas (HWiNFO e NVML), clima e um JSON com uptime e specs. Pausa
-  com jogo, tela cheia ou tela bloqueada.
+  equalizador, anéis de CPU/RAM/GPU/rede com temperaturas (HWiNFO e NVML), clima e um JSON com uptime, data e hora,
+  specs e monitores. Pausa com jogo, tela cheia ou tela bloqueada (o overlay do UnkvoidClips não conta). Põe o ícone
+  com degradê nas pastas da área de trabalho, inclusive nas novas (`Pastas` = 0 desliga; pula repositórios git).
 
 Autostart: `HKCU\...\Run` (`TemaBarra`, `TemaMenus`, `TemaJanelas`, via `rundll32 bin\<dll>,Run`) e `HKLM\...\Run`
 (`FundoVivo`, para todos os usuários). Tela de bloqueio: `HKLM\...\PersonalizationCSP` aponta para

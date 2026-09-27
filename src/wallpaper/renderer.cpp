@@ -156,8 +156,6 @@ struct Block {
     float right;
     float bottom;
     float ringsY;
-    float groupCenter;
-    float groupHalfWidth;
 };
 
 // Estado que atravessa as sessões (o Explorer reiniciando recria só a janela): temas, som, widgets e tempos.
@@ -266,7 +264,7 @@ Block Wallpaper::LayoutBlock(Monitors const& monitors) const {
     float center = (l.cardLeft + l.right) / 2, halfWidth = 4 * r + 30 * s;
 
     return {center - halfWidth + (l.cardLeft - center + halfWidth) * a, ringsY - r + (l.top - ringsY + r) * a,
-            center + halfWidth + (l.right - center - halfWidth) * a, ringsY + r + 22 * s + panel.Height(), ringsY, center, halfWidth};
+            center + halfWidth + (l.right - center - halfWidth) * a, ringsY + r + 22 * s + panel.Height(), ringsY};
 }
 
 // Direct3D: fundo preto e, em cada monitor, a imagem inteira ondulando ("golden") ou as faixas do morph ("loop"). Cada
@@ -319,7 +317,7 @@ void Wallpaper::DrawOverlay(Surface const& surface, Monitors const& monitors, Bl
         dc->SetTransform(corner);
         if (a > 0) card.Draw(dc, g.brush.Get(), l, equalizer, a);
         rings.Draw(dc, g.brush.Get(), g.round.Get(), corner, l, block.ringsY);
-        panel.Draw(dc, block.groupCenter - block.groupHalfWidth, block.ringsY + l.ringRadius + 22 * l.scale, 2 * block.groupHalfWidth);
+        panel.Draw(dc, l.cardLeft, block.ringsY + l.ringRadius + 22 * l.scale, l.right - l.cardLeft);
     }
 
     dc->SetTransform(D2D1::Matrix3x2F::Identity());

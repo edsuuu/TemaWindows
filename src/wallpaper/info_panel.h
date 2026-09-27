@@ -33,6 +33,7 @@ private:
     int second = -1;
     int weatherVersion = -1;
     float scale = 1;
+    float charWidth = 0;
 
     void Create(ID2D1DeviceContext* screen);
     void Render(SYSTEMTIME const& now, int width);
