@@ -246,7 +246,7 @@ void Wallpaper::UpdateWidgets(NowPlaying const& song, Monitors const& monitors, 
     equalizer.Read(capture.Get());
     if (card.alpha > 0 || capture) equalizer.Update(capture != nullptr, dt);
     card.Update(g.dc.Get(), g.dwrite.Get(), song, monitors.layout, dt);
-    presence = std::clamp(presence + (!song.title.empty() ? 2 : -2) * dt, 0.f, 1.f);
+    presence = std::clamp(presence + (card.showing ? 2 : -2) * dt, 0.f, 1.f);
 
     if (now - lastReading <= 1.5) return;
     lastReading = now;

@@ -18,10 +18,13 @@ struct CornerLayout {
     float scale;
 };
 
+constexpr float kPausedGrace = 10;
+
 D2D1_RECT_F MediaButtonRect(CornerLayout const& layout, int button);
 
 struct NowPlayingCard {
     float alpha = 0;
+    bool showing = false;
 
     void Create(IDWriteFactory* dwrite, float scale);
     void Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowPlaying const& song, CornerLayout const& layout, float dt);
@@ -39,6 +42,7 @@ private:
     std::wstring title;
     std::wstring artist;
     float coverAlpha = 0;
+    float pausedFor = kPausedGrace;
     bool playing = false;
 
     void DrawButtons(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility, int hovered,

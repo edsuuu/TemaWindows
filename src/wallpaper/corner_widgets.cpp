@@ -34,13 +34,15 @@ void NowPlayingCard::Create(IDWriteFactory* dwrite, float scale) {
     iconFont->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 }
 
-// O cartão aparece e some devagar (0,5 s) e fica enquanto o Spotify tiver música, tocando ou pausada (para os botões
-// continuarem ali); na troca de música some, troca o texto (e a capa) e volta. A capa desta música entra com fade
-// quando chega. O título deixa espaço para os botões.
+// O cartão aparece e some devagar (0,5 s): fica enquanto a música toca e mais 10 s depois de pausar (dá tempo de
+// apertar play de novo). Na troca de música some, troca o texto (e a capa) e volta. A capa desta música entra com
+// fade quando chega. O título deixa espaço para os botões.
 void NowPlayingCard::Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowPlaying const& song, CornerLayout const& layout, float dt) {
     bool changed = song.title != title || song.artist != artist;
-    alpha = std::clamp(alpha + (!song.title.empty() && !changed ? 2 : -2) * dt, 0.f, 1.f);
     playing = song.playing;
+    pausedFor = playing ? 0 : pausedFor + dt;
+    showing = !song.title.empty() && pausedFor < kPausedGrace;
+    alpha = std::clamp(alpha + (showing && !changed ? 2 : -2) * dt, 0.f, 1.f);
 
     if (changed && alpha == 0) {
         float width = layout.right - layout.textLeft;
