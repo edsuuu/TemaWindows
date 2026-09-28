@@ -1,11 +1,14 @@
 #include "wallpaper/corner_widgets.h"
 #include "wallpaper/text.h"
+#include "wallpaper/timing.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 
 constexpr float kMediaButton = 30;
+constexpr float kProgressMin = 90;
+constexpr float kProgressGap = 14;
 
 // Fonte de uma linha com "…" no fim quando o texto não cabe.
 static ComPtr<IDWriteTextFormat> TrimmedFont(IDWriteFactory* dwrite, const wchar_t* family, float pixels, DWRITE_FONT_WEIGHT weight) {
@@ -36,10 +39,13 @@ void NowPlayingCard::Create(IDWriteFactory* dwrite, float scale) {
 
 // O cartão aparece e some devagar (0,5 s): fica enquanto a música toca e mais 3 s depois de pausar (dá tempo de
 // apertar play de novo). Na troca de música some, troca o texto (e a capa) e volta. A capa desta música entra com
-// fade quando chega. O título deixa espaço para os botões.
+// fade quando chega. O título deixa espaço para os botões e o artista, para a barra de progresso.
 void NowPlayingCard::Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowPlaying const& song, CornerLayout const& layout, float dt) {
     bool changed = song.title != title || song.artist != artist;
     playing = song.playing;
+    position = song.position;
+    duration = song.duration;
+    readAt = song.readAt;
     pausedFor = playing ? 0 : pausedFor + dt;
     showing = !song.title.empty() && pausedFor < kPausedGrace;
     alpha = std::clamp(alpha + (showing && !changed ? 2 : -2) * dt, 0.f, 1.f);
@@ -50,7 +56,11 @@ void NowPlayingCard::Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowP
         artist = song.artist;
         dwrite->CreateTextLayout(title.c_str(), (UINT)title.size(), titleFont.Get(), width - (3 * kMediaButton + 6) * layout.scale,
                                  30 * layout.scale, &titleLayout);
-        dwrite->CreateTextLayout(artist.c_str(), (UINT)artist.size(), artistFont.Get(), width, 22 * layout.scale, &artistLayout);
+        dwrite->CreateTextLayout(artist.c_str(), (UINT)artist.size(), artistFont.Get(), width - (kProgressMin + kProgressGap) * layout.scale,
+                                 22 * layout.scale, &artistLayout);
+        DWRITE_TEXT_METRICS metrics{};
+        artistLayout->GetMetrics(&metrics);
+        artistWidth = metrics.width;
         cover = nullptr;
         coverBrush = nullptr;
     }
@@ -87,9 +97,28 @@ void NowPlayingCard::DrawButtons(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* b
     }
 }
 
+// Barra de progresso da música na linha do artista, do fim do nome até a borda direita: trilho apagado e o
+// preenchimento claro por cima, de cantos redondos. Entre uma leitura e outra (1 s) a posição anda com o relógio.
+void NowPlayingCard::DrawProgress(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility) {
+    if (duration <= 0) return;
+
+    const float s = layout.scale, y = roundf(layout.top + 2 * s) + 39 * s;
+    const float left = roundf(layout.textLeft + artistWidth + kProgressGap * s), right = layout.right;
+    double elapsed = position + (playing ? Now() - readAt : 0);
+    float fraction = float(std::clamp(elapsed / duration, 0.0, 1.0));
+
+    D2D1_ROUNDED_RECT bar{{left, y - 1.5f * s, right, y + 1.5f * s}, 1.5f * s, 1.5f * s};
+    brush->SetColor({1, 1, 1, 0.16f * visibility});
+    dc->FillRoundedRectangle(bar, brush);
+    bar.rect.right = left + (right - left) * fraction;
+    brush->SetColor({0.9f, 0.9f, 0.9f, 0.9f * visibility});
+    dc->FillRoundedRectangle(bar, brush);
+}
+
 // Cartão de largura fixa no canto: capa à esquerda (cantos levemente arredondados; enquanto não chega, um quadrado bem
 // apagado no lugar), título (~#F2F2F2) e artista (~#C8C8C8) colados nela até a borda direita, os botões na linha do
-// título e o equalizador na base da capa, de ponta a ponta, com graves à esquerda e agudos à direita.
+// título, a barra de progresso na do artista e o equalizador na base da capa, de ponta a ponta, com graves à esquerda
+// e agudos à direita.
 void NowPlayingCard::Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, Equalizer const& equalizer,
                           float visibility, int hovered, int pressed) {
     const float s = layout.scale, top = roundf(layout.top + 2 * s), size = float(CoverSize());
@@ -100,6 +129,7 @@ void NowPlayingCard::Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, C
     brush->SetColor({0.78f, 0.78f, 0.78f, 0.95f * visibility});
     dc->DrawTextLayout({left, top + 28 * s}, artistLayout.Get(), brush);
     DrawButtons(dc, brush, layout, visibility, hovered, pressed);
+    DrawProgress(dc, brush, layout, visibility);
 
     const float barWidth = roundf(width / Equalizer::kBands * 0.5f), step = (width - barWidth) / (Equalizer::kBands - 1), base = top + size;
     for (int i = 0; i < Equalizer::kBands; i++) {

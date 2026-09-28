@@ -43,10 +43,15 @@ private:
     std::wstring artist;
     float coverAlpha = 0;
     float pausedFor = kPausedGrace;
+    float artistWidth = 0;
+    double position = 0;
+    double duration = 0;
+    double readAt = 0;
     bool playing = false;
 
     void DrawButtons(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility, int hovered,
                      int pressed);
+    void DrawProgress(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility);
 };
 
 struct Rings {

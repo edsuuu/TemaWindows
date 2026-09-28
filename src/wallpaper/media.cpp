@@ -1,5 +1,6 @@
 #include "wallpaper/media.h"
 #include "wallpaper/desktop.h"
+#include "wallpaper/timing.h"
 
 #include <shcore.h>
 #include <wincodec.h>
@@ -8,6 +9,7 @@
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Media.Control.h>
 #include <winrt/Windows.Storage.Streams.h>
+#include <algorithm>
 #include <mutex>
 #include <thread>
 
@@ -70,6 +72,23 @@ static void UpdateCover(GlobalSystemMediaTransportControlsSessionMediaProperties
     }
 }
 
+// Posição e duração da música em segundos, pela linha do tempo da sessão: a última posição informada pelo player,
+// andando com o relógio enquanto toca, dentro do começo e do fim. Marca a hora da leitura para o quadro continuar
+// andando entre uma leitura e outra.
+static void ReadTimeline(GlobalSystemMediaTransportControlsSession const& session, NowPlaying& song) {
+    auto properties = session.GetTimelineProperties();
+    auto length = properties.EndTime() - properties.StartTime();
+    if (length.count() <= 0) return;
+
+    auto position = properties.Position();
+    if (song.playing) position += winrt::clock::now() - properties.LastUpdatedTime();
+    position = std::clamp(position, properties.StartTime(), properties.EndTime()) - properties.StartTime();
+
+    song.position = std::chrono::duration<double>(position).count();
+    song.duration = std::chrono::duration<double>(length).count();
+    song.readAt = Now();
+}
+
 // O que o Spotify está tocando agora (tocando ou pausado); vazio se ele não tiver sessão de mídia.
 static NowPlaying ReadSpotify(GlobalSystemMediaTransportControlsSessionManager const& manager, CoverState& cover) {
     NowPlaying song;
@@ -83,6 +102,7 @@ static NowPlaying ReadSpotify(GlobalSystemMediaTransportControlsSessionManager c
         song.artist = properties.Artist();
         UpdateCover(properties, song, cover);
         song.cover = cover.pixels;
+        ReadTimeline(session, song);
         break;
     }
     return song;

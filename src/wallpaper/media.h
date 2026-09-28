@@ -10,6 +10,9 @@ struct NowPlaying {
     std::wstring artist;
     bool playing = false;
     std::shared_ptr<std::vector<BYTE>> cover;
+    double position = 0;
+    double duration = 0;
+    double readAt = 0;
 };
 
 int CoverSize();
