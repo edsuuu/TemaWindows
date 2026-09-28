@@ -3,6 +3,7 @@
 #include "wallpaper/http.h"
 #include "wallpaper/timing.h"
 #include "common/paths.h"
+#include "common/registry.h"
 
 #include <algorithm>
 #include <atomic>
@@ -43,19 +44,23 @@ static ULONGLONG LoadCache(std::wstring const& path) {
     return GetTickCount64() + (ageMs < kRefreshMs ? kRefreshMs - ageMs : 0);
 }
 
-// Thread do clima (Open-Meteo): baixa a cada 30 min, só com o fundo visível (com jogo, tela cheia ou bloqueio,
-// nada de rede), e guarda a resposta em cache\cache-clima.txt; sem internet (ou resposta estranha) tenta de novo em
-// 5 min e fica o último valor.
+// Thread do clima (Open-Meteo): baixa a cada 30 min, só com o fundo visível (com jogo, tela cheia ou bloqueio, nada de
+// rede), e guarda a resposta em cache\cache-clima.txt; sem internet (ou resposta estranha) tenta de novo em 5 min e
+// fica o último valor. O lugar vem do registro (ClimaLatitude e ClimaLongitude, texto como "-23.55"), para não ficar
+// no código; sem ele, não há clima. O fuso é o do lugar (timezone=auto).
 static void WeatherLoop() {
     std::wstring cache = ProjectPath(L"cache\\cache-clima.txt");
+    std::wstring latitude = SettingText(L"ClimaLatitude", L""), longitude = SettingText(L"ClimaLongitude", L"");
+    if (latitude.empty() || longitude.empty()) return;
+
+    std::wstring path = L"/v1/forecast?latitude=" + latitude + L"&longitude=" + longitude +
+                        L"&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min&timezone=auto";
     ULONGLONG next = LoadCache(cache);
 
     for (;; Sleep(10000)) {
         if (WallpaperHidden() || GetTickCount64() < next) continue;
 
-        std::string json = HttpsRequest(L"api.open-meteo.com",
-                                        L"/v1/forecast?latitude=0&longitude=0&current=temperature_2m,weather_code,is_day"
-                                        L"&daily=temperature_2m_max,temperature_2m_min&timezone=auto");
+        std::string json = HttpsRequest(L"api.open-meteo.com", path);
         if (json.find("\"current\":{") == std::string::npos) {
             next = GetTickCount64() + kRetryMs;
             continue;
