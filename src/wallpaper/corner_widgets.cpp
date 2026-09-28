@@ -7,8 +7,19 @@
 #include <cstdio>
 
 constexpr float kMediaButton = 30;
-constexpr float kProgressMin = 90;
+constexpr float kProgressMin = 70;
 constexpr float kProgressGap = 14;
+constexpr float kTimeGap = 8;
+constexpr float kTimeReserve = 30;
+
+// Tempo da música: "0:42", "3:05" ou, passando de uma hora, "1:02:05".
+static std::wstring FormatTime(double seconds) {
+    int total = int(seconds), hours = total / 3600, minutes = total / 60 % 60, rest = total % 60;
+    wchar_t text[16];
+    if (hours) swprintf_s(text, L"%d:%02d:%02d", hours, minutes, rest);
+    else swprintf_s(text, L"%d:%02d", minutes, rest);
+    return text;
+}
 
 // Fonte de uma linha com "…" no fim quando o texto não cabe.
 static ComPtr<IDWriteTextFormat> TrimmedFont(IDWriteFactory* dwrite, const wchar_t* family, float pixels, DWRITE_FONT_WEIGHT weight) {
@@ -35,6 +46,11 @@ void NowPlayingCard::Create(IDWriteFactory* dwrite, float scale) {
     iconFont = SingleLineFont(dwrite, L"Segoe Fluent Icons", 14 * scale);
     iconFont->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
     iconFont->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+    elapsedFont = SingleLineFont(dwrite, L"Segoe UI Variable Text", 11 * scale);
+    elapsedFont->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_TRAILING);
+    elapsedFont->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+    totalFont = SingleLineFont(dwrite, L"Segoe UI Variable Text", 11 * scale);
+    totalFont->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 }
 
 // O cartão aparece e some devagar (0,5 s): fica enquanto a música toca e mais 3 s depois de pausar (dá tempo de
@@ -44,8 +60,12 @@ void NowPlayingCard::Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowP
     bool changed = song.title != title || song.artist != artist;
     playing = song.playing;
     position = song.position;
-    duration = song.duration;
     readAt = song.readAt;
+    if (song.duration != duration) {
+        duration = song.duration;
+        totalText = FormatTime(duration);
+        totalWidth = TextWidth(dwrite, totalText, totalFont.Get());
+    }
     pausedFor = playing ? 0 : pausedFor + dt;
     showing = !song.title.empty() && pausedFor < kPausedGrace;
     alpha = std::clamp(alpha + (showing && !changed ? 2 : -2) * dt, 0.f, 1.f);
@@ -56,8 +76,9 @@ void NowPlayingCard::Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowP
         artist = song.artist;
         dwrite->CreateTextLayout(title.c_str(), (UINT)title.size(), titleFont.Get(), width - (3 * kMediaButton + 6) * layout.scale,
                                  30 * layout.scale, &titleLayout);
-        dwrite->CreateTextLayout(artist.c_str(), (UINT)artist.size(), artistFont.Get(), width - (kProgressMin + kProgressGap) * layout.scale,
-                                 22 * layout.scale, &artistLayout);
+        float progress = kProgressGap + 2 * (kTimeReserve + kTimeGap) + kProgressMin;
+        dwrite->CreateTextLayout(artist.c_str(), (UINT)artist.size(), artistFont.Get(), width - progress * layout.scale, 22 * layout.scale,
+                                 &artistLayout);
         DWRITE_TEXT_METRICS metrics{};
         artistLayout->GetMetrics(&metrics);
         artistWidth = metrics.width;
@@ -97,16 +118,25 @@ void NowPlayingCard::DrawButtons(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* b
     }
 }
 
-// Barra de progresso da música na linha do artista, do fim do nome até a borda direita: trilho apagado e o
-// preenchimento claro por cima, de cantos redondos. Entre uma leitura e outra (1 s) a posição anda com o relógio.
+// Barra de progresso da música na linha do artista, do fim do nome até a borda direita: tempo decorrido, trilho
+// apagado com o preenchimento claro por cima (cantos redondos) e a duração. Os dois tempos ficam em caixas da largura
+// da duração (o decorrido nunca passa dela), então a barra não pula. Entre uma leitura e outra (1 s) a posição anda
+// com o relógio.
 void NowPlayingCard::DrawProgress(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility) {
     if (duration <= 0) return;
 
-    const float s = layout.scale, y = roundf(layout.top + 2 * s) + 39 * s;
-    const float left = roundf(layout.textLeft + artistWidth + kProgressGap * s), right = layout.right;
-    double elapsed = position + (playing ? Now() - readAt : 0);
-    float fraction = float(std::clamp(elapsed / duration, 0.0, 1.0));
+    const float s = layout.scale, y = roundf(layout.top + 2 * s) + 39 * s, start = roundf(layout.textLeft + artistWidth + kProgressGap * s);
+    double elapsed = std::clamp(position + (playing ? Now() - readAt : 0), 0.0, duration);
+    std::wstring elapsedText = FormatTime(elapsed);
+    D2D1_RECT_F elapsedBox{start, y - 9 * s, start + totalWidth, y + 9 * s};
+    D2D1_RECT_F totalBox{layout.right - totalWidth, y - 9 * s, layout.right, y + 9 * s};
 
+    brush->SetColor({0.62f, 0.62f, 0.62f, 0.95f * visibility});
+    dc->DrawText(elapsedText.c_str(), (UINT)elapsedText.size(), elapsedFont.Get(), elapsedBox, brush);
+    dc->DrawText(totalText.c_str(), (UINT)totalText.size(), totalFont.Get(), totalBox, brush);
+
+    const float left = elapsedBox.right + kTimeGap * s, right = totalBox.left - kTimeGap * s;
+    float fraction = float(elapsed / duration);
     D2D1_ROUNDED_RECT bar{{left, y - 1.5f * s, right, y + 1.5f * s}, 1.5f * s, 1.5f * s};
     brush->SetColor({1, 1, 1, 0.16f * visibility});
     dc->FillRoundedRectangle(bar, brush);

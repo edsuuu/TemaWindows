@@ -35,6 +35,8 @@ private:
     ComPtr<IDWriteTextFormat> titleFont;
     ComPtr<IDWriteTextFormat> artistFont;
     ComPtr<IDWriteTextFormat> iconFont;
+    ComPtr<IDWriteTextFormat> elapsedFont;
+    ComPtr<IDWriteTextFormat> totalFont;
     ComPtr<IDWriteTextLayout> titleLayout;
     ComPtr<IDWriteTextLayout> artistLayout;
     ComPtr<ID2D1BitmapBrush> coverBrush;
@@ -44,6 +46,8 @@ private:
     float coverAlpha = 0;
     float pausedFor = kPausedGrace;
     float artistWidth = 0;
+    float totalWidth = 0;
+    std::wstring totalText;
     double position = 0;
     double duration = 0;
     double readAt = 0;
