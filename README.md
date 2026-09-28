@@ -53,6 +53,12 @@ tools\theme.ps1 off Fundo -Reload       # desliga e recarrega o componente
 tools\theme.ps1 set FundoTema loop      # o tema do fundo vale na hora
 ```
 
+Textos (REG_SZ) que ficam fora do código:
+
+- `ClimaLatitude` e `ClimaLongitude` — lugar do clima (ex.: `-23.55` e `-46.63`); sem eles, o painel fica sem clima.
+- `SpotifyClientId` — Client ID do app do Spotify para a próxima música da fila (login uma vez com
+  `tools\spotify-login.ps1`; o token fica criptografado em `cache\`).
+
 ## Compilar e recarregar
 
 Precisa do VS 2022 Build Tools (C++ x64). `build\build-all.bat` compila tudo; cada `build\build-<projeto>.bat`
