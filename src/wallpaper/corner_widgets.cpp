@@ -121,12 +121,12 @@ void NowPlayingCard::UpdateNext(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, 
     bool valid = showing && !next.title.empty() && next.after == title;
 
     if (key != nextKey && nextAlpha == 0) {
-        float width = layout.right - layout.cardLeft - (kNextRow + 10) * s;
         nextKey = key;
         dwrite->CreateTextLayout(next.title.c_str(), (UINT)next.title.size(), nextTitleFont.Get(), kUnbounded, 16 * s, &nextTitleLayout);
         nextTitleWidth = LayoutWidth(nextTitleLayout.Get());
         nextSince = Now();
-        dwrite->CreateTextLayout(next.artist.c_str(), (UINT)next.artist.size(), nextArtistFont.Get(), width, 14 * s, &nextArtistLayout);
+        dwrite->CreateTextLayout(next.artist.c_str(), (UINT)next.artist.size(), nextArtistFont.Get(), kUnbounded, 14 * s, &nextArtistLayout);
+        nextArtistWidth = LayoutWidth(nextArtistLayout.Get());
         nextCover = nullptr;
         nextCoverBrush = nullptr;
     }
@@ -166,7 +166,7 @@ void NowPlayingCard::DrawNext(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brus
     brush->SetColor({0.85f, 0.85f, 0.85f, 0.95f * alpha});
     DrawMarquee(dc, brush, nextTitleLayout.Get(), nextTitleWidth, {x, top - 2 * s}, layout.right - x, 16 * s, s, nextSince);
     brush->SetColor({0.6f, 0.6f, 0.6f, 0.95f * alpha});
-    dc->DrawTextLayout({x, top + 12 * s}, nextArtistLayout.Get(), brush);
+    DrawMarquee(dc, brush, nextArtistLayout.Get(), nextArtistWidth, {x, top + 12 * s}, layout.right - x, 14 * s, s, nextSince);
 }
 
 // O cartão aparece e some devagar (0,5 s): fica enquanto a música toca e mais 3 s depois de pausar (dá tempo de
@@ -194,12 +194,9 @@ void NowPlayingCard::Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowP
         dwrite->CreateTextLayout(title.c_str(), (UINT)title.size(), titleFont.Get(), kUnbounded, 30 * layout.scale, &titleLayout);
         titleWidth = LayoutWidth(titleLayout.Get());
         titleSince = Now();
-        float progress = kProgressGap + 2 * (kTimeReserve + kTimeGap) + kProgressMin;
-        dwrite->CreateTextLayout(artist.c_str(), (UINT)artist.size(), artistFont.Get(), width - progress * layout.scale, 22 * layout.scale,
-                                 &artistLayout);
-        DWRITE_TEXT_METRICS metrics{};
-        artistLayout->GetMetrics(&metrics);
-        artistWidth = metrics.width;
+        dwrite->CreateTextLayout(artist.c_str(), (UINT)artist.size(), artistFont.Get(), kUnbounded, 22 * layout.scale, &artistLayout);
+        artistWidth = LayoutWidth(artistLayout.Get());
+        artistMax = width - (kProgressGap + 2 * (kTimeReserve + kTimeGap) + kProgressMin) * layout.scale;
         cover = nullptr;
         coverBrush = nullptr;
     }
@@ -245,7 +242,7 @@ void NowPlayingCard::DrawButtons(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* b
 void NowPlayingCard::DrawProgress(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility) {
     if (duration <= 0) return;
 
-    const float s = layout.scale, y = roundf(layout.top + 2 * s) + 39 * s, start = roundf(layout.textLeft + artistWidth + kProgressGap * s);
+    const float s = layout.scale, y = roundf(layout.top + 2 * s) + 39 * s, start = roundf(layout.textLeft + std::min(artistWidth, artistMax) + kProgressGap * s);
     double elapsed = std::clamp(position + (playing ? std::min(Now() - readAt, 2.0) : 0), 0.0, duration);
     std::wstring elapsedText = FormatTime(elapsed);
     D2D1_RECT_F elapsedBox{start, y - 9 * s, start + totalWidth, y + 9 * s};
@@ -277,7 +274,7 @@ void NowPlayingCard::Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, C
     brush->SetColor({0.95f, 0.95f, 0.95f, 0.97f * visibility});
     DrawMarquee(dc, brush, titleLayout.Get(), titleWidth, {left, top - 2 * s}, width - (3 * kMediaButton + 6) * s, 30 * s, s, titleSince);
     brush->SetColor({0.78f, 0.78f, 0.78f, 0.95f * visibility});
-    dc->DrawTextLayout({left, top + 28 * s}, artistLayout.Get(), brush);
+    DrawMarquee(dc, brush, artistLayout.Get(), artistWidth, {left, top + 28 * s}, artistMax, 22 * s, s, titleSince);
     DrawButtons(dc, brush, layout, visibility, hovered, pressed);
     DrawProgress(dc, brush, layout, visibility);
 

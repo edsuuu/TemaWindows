@@ -63,6 +63,8 @@ private:
     float coverAlpha = 0;
     float pausedFor = kPausedGrace;
     float artistWidth = 0;
+    float artistMax = 0;
+    float nextArtistWidth = 0;
     float totalWidth = 0;
     std::wstring totalText;
     double position = 0;
