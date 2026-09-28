@@ -245,7 +245,7 @@ void Wallpaper::UpdateWidgets(NowPlaying const& song, Monitors const& monitors, 
 
     equalizer.Read(capture.Get());
     if (card.alpha > 0 || capture) equalizer.Update(capture != nullptr, dt);
-    card.Update(g.dc.Get(), g.dwrite.Get(), song, monitors.layout, dt);
+    card.Update(g.dc.Get(), g.dwrite.Get(), song, CurrentNextTrack(), monitors.layout, dt);
     presence = std::clamp(presence + (card.showing ? 2 : -2) * dt, 0.f, 1.f);
 
     if (now - lastReading <= 1.5) return;
@@ -262,7 +262,7 @@ Block Wallpaper::LayoutBlock(Monitors const& monitors) const {
     auto const& l = monitors.layout;
     const float s = l.scale, r = l.ringRadius;
     float a = card.alpha * card.alpha * (3 - 2 * card.alpha);
-    float ringsY = roundf(l.top + presence * presence * (3 - 2 * presence) * 118 * s + r + 2 * s);
+    float ringsY = roundf(l.top + presence * presence * (3 - 2 * presence) * (118 * s + card.NextRowHeight(s)) + r + 2 * s);
     float center = (l.cardLeft + l.right) / 2, halfWidth = 4 * r + 30 * s;
 
     return {center - halfWidth + (l.cardLeft - center + halfWidth) * a, ringsY - r + (l.top - ringsY + r) * a,

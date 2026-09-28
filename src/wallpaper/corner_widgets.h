@@ -3,6 +3,7 @@
 #include "wallpaper/audio.h"
 #include "wallpaper/media.h"
 #include "wallpaper/network.h"
+#include "wallpaper/next_track.h"
 #include "wallpaper/sensors.h"
 
 #include <d2d1_1.h>
@@ -27,7 +28,9 @@ struct NowPlayingCard {
     bool showing = false;
 
     void Create(IDWriteFactory* dwrite, float scale);
-    void Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowPlaying const& song, CornerLayout const& layout, float dt);
+    void Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowPlaying const& song, NextTrack const& next, CornerLayout const& layout,
+                float dt);
+    float NextRowHeight(float scale) const;
     void Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, Equalizer const& equalizer, float visibility,
               int hovered, int pressed);
 
@@ -37,6 +40,20 @@ private:
     ComPtr<IDWriteTextFormat> iconFont;
     ComPtr<IDWriteTextFormat> elapsedFont;
     ComPtr<IDWriteTextFormat> totalFont;
+    ComPtr<IDWriteTextFormat> nextTitleFont;
+    ComPtr<IDWriteTextFormat> nextArtistFont;
+    ComPtr<IDWriteTextLayout> nextTitleLayout;
+    ComPtr<IDWriteTextLayout> nextArtistLayout;
+    ComPtr<ID2D1BitmapBrush> nextCoverBrush;
+    std::shared_ptr<std::vector<BYTE>> nextCover;
+    std::wstring nextKey;
+    float nextAlpha = 0;
+    float titleWidth = 0;
+    float nextTitleWidth = 0;
+    double titleSince = 0;
+    double nextSince = 0;
+    ComPtr<ID2D1LinearGradientBrush> fadeLeft;
+    ComPtr<ID2D1LinearGradientBrush> fadeRight;
     ComPtr<IDWriteTextLayout> titleLayout;
     ComPtr<IDWriteTextLayout> artistLayout;
     ComPtr<ID2D1BitmapBrush> coverBrush;
@@ -56,6 +73,11 @@ private:
     void DrawButtons(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility, int hovered,
                      int pressed);
     void DrawProgress(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility);
+    void UpdateNext(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NextTrack const& next, CornerLayout const& layout, float dt);
+    void CreateFades(ID2D1DeviceContext* dc);
+    void DrawMarquee(ID2D1DeviceContext* dc, ID2D1Brush* brush, IDWriteTextLayout* text, float textWidth, D2D1_POINT_2F at, float width,
+                     float height, float s, double since);
+    void DrawNext(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility);
 };
 
 struct Rings {

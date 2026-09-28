@@ -1,9 +1,9 @@
 #include "wallpaper/weather.h"
 #include "wallpaper/desktop.h"
+#include "wallpaper/http.h"
 #include "wallpaper/timing.h"
 #include "common/paths.h"
 
-#include <winhttp.h>
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
@@ -12,38 +12,12 @@
 #include <mutex>
 #include <thread>
 
-#pragma comment(lib, "winhttp.lib")
-
 constexpr ULONGLONG kRefreshMs = 30 * 60000;
 constexpr ULONGLONG kRetryMs = 5 * 60000;
 
 static std::mutex g_mutex;
 static std::string g_json;
 static std::atomic<int> g_version{0};
-
-// GET https://host/caminho; "" se falhar (sem internet, erro ou ~15 s sem resposta).
-static std::string HttpsGet(const wchar_t* host, const wchar_t* path) {
-    std::string body;
-    DWORD status = 0, size = sizeof status;
-    HINTERNET session = WinHttpOpen(L"FundoVivo", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, nullptr, nullptr, 0);
-    HINTERNET connection = session ? WinHttpConnect(session, host, INTERNET_DEFAULT_HTTPS_PORT, 0) : nullptr;
-    HINTERNET request = connection ? WinHttpOpenRequest(connection, L"GET", path, nullptr, nullptr, nullptr, WINHTTP_FLAG_SECURE) : nullptr;
-
-    if (request) WinHttpSetTimeouts(request, 10000, 10000, 15000, 15000);
-    if (request && WinHttpSendRequest(request, nullptr, 0, nullptr, 0, 0, 0) && WinHttpReceiveResponse(request, nullptr) &&
-        WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, nullptr, &status, &size, nullptr) && status == 200)
-        for (DWORD available = 0, read = 0; WinHttpQueryDataAvailable(request, &available) && available;) {
-            size_t offset = body.size();
-            body.resize(offset + available);
-            if (!WinHttpReadData(request, body.data() + offset, available, &read)) status = 0, read = 0;
-            body.resize(offset + read);
-            if (!status) break;
-        }
-
-    for (HINTERNET handle : {request, connection, session})
-        if (handle) WinHttpCloseHandle(handle);
-    return status == 200 ? body : "";
-}
 
 // Publica uma resposta nova para o painel.
 static void Publish(std::string json) {
@@ -79,9 +53,9 @@ static void WeatherLoop() {
     for (;; Sleep(10000)) {
         if (WallpaperHidden() || GetTickCount64() < next) continue;
 
-        std::string json = HttpsGet(L"api.open-meteo.com",
-                                    L"/v1/forecast?latitude=0&longitude=0&current=temperature_2m,weather_code,is_day"
-                                    L"&daily=temperature_2m_max,temperature_2m_min&timezone=auto");
+        std::string json = HttpsRequest(L"api.open-meteo.com",
+                                        L"/v1/forecast?latitude=0&longitude=0&current=temperature_2m,weather_code,is_day"
+                                        L"&daily=temperature_2m_max,temperature_2m_min&timezone=auto");
         if (json.find("\"current\":{") == std::string::npos) {
             next = GetTickCount64() + kRetryMs;
             continue;

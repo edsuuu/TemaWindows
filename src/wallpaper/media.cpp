@@ -22,6 +22,12 @@ struct CoverState {
     int attempts = 0;
 };
 
+struct TimelineAnchor {
+    winrt::Windows::Foundation::TimeSpan position{};
+    bool playing = false;
+    winrt::clock::time_point seen{};
+};
+
 static std::mutex g_mutex;
 static NowPlaying g_nowPlaying;
 
@@ -30,23 +36,17 @@ int CoverSize() {
     return int(90 * GetDpiForSystem() / 96.f);
 }
 
-// Capa do álbum (o Spotify manda um JPEG pequeno) já no tamanho da tela, em BGRA pré-multiplicado. Estica para
-// quadrado: capa de álbum já é quadrada.
-static std::shared_ptr<std::vector<BYTE>> DecodeCover(winrt::Windows::Storage::Streams::IRandomAccessStreamReference const& reference) {
-    if (!reference) return nullptr;
-
-    auto stream = reference.OpenReadAsync().get();
-    ComPtr<IStream> input;
+// Imagem (JPEG/PNG) num quadrado de `size` px, em BGRA pré-multiplicado. Estica para quadrado: capa de álbum já é
+// quadrada.
+std::shared_ptr<std::vector<BYTE>> DecodeImage(IStream* input, int size) {
     ComPtr<IWICImagingFactory> wic;
     ComPtr<IWICBitmapDecoder> decoder;
     ComPtr<IWICBitmapFrameDecode> frame;
     ComPtr<IWICBitmapScaler> scaler;
     ComPtr<IWICFormatConverter> converter;
-    int size = CoverSize();
 
-    if (FAILED(CreateStreamOverRandomAccessStream(winrt::get_unknown(stream), IID_PPV_ARGS(&input))) ||
-        FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic))) ||
-        FAILED(wic->CreateDecoderFromStream(input.Get(), nullptr, WICDecodeMetadataCacheOnDemand, &decoder)) || FAILED(decoder->GetFrame(0, &frame)))
+    if (!input || FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic))) ||
+        FAILED(wic->CreateDecoderFromStream(input, nullptr, WICDecodeMetadataCacheOnDemand, &decoder)) || FAILED(decoder->GetFrame(0, &frame)))
         return nullptr;
 
     wic->CreateBitmapScaler(&scaler);
@@ -56,6 +56,16 @@ static std::shared_ptr<std::vector<BYTE>> DecodeCover(winrt::Windows::Storage::S
 
     auto pixels = std::make_shared<std::vector<BYTE>>((size_t)size * size * 4);
     return SUCCEEDED(converter->CopyPixels(nullptr, size * 4, (UINT)pixels->size(), pixels->data())) ? pixels : nullptr;
+}
+
+// Capa do álbum que o Spotify entrega na sessão de mídia (um JPEG pequeno), no tamanho da tela.
+static std::shared_ptr<std::vector<BYTE>> DecodeCover(winrt::Windows::Storage::Streams::IRandomAccessStreamReference const& reference) {
+    if (!reference) return nullptr;
+
+    auto stream = reference.OpenReadAsync().get();
+    ComPtr<IStream> input;
+    CreateStreamOverRandomAccessStream(winrt::get_unknown(stream), IID_PPV_ARGS(&input));
+    return DecodeImage(input.Get(), CoverSize());
 }
 
 // Capa da música atual: espera 1 s depois da troca (a capa às vezes chega depois do título) e tenta por alguns segundos.
@@ -73,15 +83,19 @@ static void UpdateCover(GlobalSystemMediaTransportControlsSessionMediaProperties
 }
 
 // Posição e duração da música em segundos, pela linha do tempo da sessão: a última posição informada pelo player,
-// andando com o relógio enquanto toca, dentro do começo e do fim. Marca a hora da leitura para o quadro continuar
-// andando entre uma leitura e outra.
-static void ReadTimeline(GlobalSystemMediaTransportControlsSession const& session, NowPlaying& song) {
+// andando com o relógio enquanto toca, dentro do começo e do fim. O Spotify às vezes deixa a hora da posição velha
+// (ao voltar do pause, ela ainda é a de antes da pausa), e somar isso adiantava o tempo: o quanto andou fica limitado
+// ao tempo desde que a posição ou o play/pausa mudou aqui (+1,1 s, o intervalo das leituras). Marca a hora da leitura
+// para o quadro continuar andando entre uma leitura e outra.
+static void ReadTimeline(GlobalSystemMediaTransportControlsSession const& session, NowPlaying& song, TimelineAnchor& anchor) {
     auto properties = session.GetTimelineProperties();
     auto length = properties.EndTime() - properties.StartTime();
     if (length.count() <= 0) return;
 
     auto position = properties.Position();
-    if (song.playing) position += winrt::clock::now() - properties.LastUpdatedTime();
+    auto now = winrt::clock::now();
+    if (position != anchor.position || song.playing != anchor.playing) anchor = {position, song.playing, now};
+    if (song.playing) position += std::min(now - properties.LastUpdatedTime(), now - anchor.seen + std::chrono::milliseconds(1100));
     position = std::clamp(position, properties.StartTime(), properties.EndTime()) - properties.StartTime();
 
     song.position = std::chrono::duration<double>(position).count();
@@ -90,7 +104,7 @@ static void ReadTimeline(GlobalSystemMediaTransportControlsSession const& sessio
 }
 
 // O que o Spotify está tocando agora (tocando ou pausado); vazio se ele não tiver sessão de mídia.
-static NowPlaying ReadSpotify(GlobalSystemMediaTransportControlsSessionManager const& manager, CoverState& cover) {
+static NowPlaying ReadSpotify(GlobalSystemMediaTransportControlsSessionManager const& manager, CoverState& cover, TimelineAnchor& anchor) {
     NowPlaying song;
 
     for (auto session : manager.GetSessions()) {
@@ -102,7 +116,7 @@ static NowPlaying ReadSpotify(GlobalSystemMediaTransportControlsSessionManager c
         song.artist = properties.Artist();
         UpdateCover(properties, song, cover);
         song.cover = cover.pixels;
-        ReadTimeline(session, song);
+        ReadTimeline(session, song, anchor);
         break;
     }
     return song;
@@ -114,12 +128,13 @@ static void MediaLoop() {
     winrt::init_apartment();
     GlobalSystemMediaTransportControlsSessionManager manager{nullptr};
     CoverState cover;
+    TimelineAnchor anchor;
 
     for (;;) {
         NowPlaying song;
         try {
             if (!manager) manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();
-            song = ReadSpotify(manager, cover);
+            song = ReadSpotify(manager, cover, anchor);
         } catch (...) {
             manager = nullptr;
         }

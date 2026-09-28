@@ -16,6 +16,7 @@ struct NowPlaying {
 };
 
 int CoverSize();
+std::shared_ptr<std::vector<BYTE>> DecodeImage(IStream* input, int size);
 void StartMediaWatcher();
 NowPlaying CurrentMedia();
 void SendMediaCommand(int button);

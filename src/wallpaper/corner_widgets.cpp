@@ -11,6 +11,20 @@ constexpr float kProgressMin = 70;
 constexpr float kProgressGap = 14;
 constexpr float kTimeGap = 8;
 constexpr float kTimeReserve = 30;
+constexpr float kNextGap = 12;
+constexpr float kNextRow = 26;
+constexpr float kMarqueeSpeed = 30;
+constexpr float kMarqueeGap = 48;
+constexpr float kMarqueeFade = 16;
+constexpr float kUnbounded = 10000;
+constexpr double kMarqueePause = 2.5;
+
+// Largura natural de um texto (layout sem limite).
+static float LayoutWidth(IDWriteTextLayout* layout) {
+    DWRITE_TEXT_METRICS metrics{};
+    layout->GetMetrics(&metrics);
+    return metrics.width;
+}
 
 // Tempo da música: "0:42", "3:05" ou, passando de uma hora, "1:02:05".
 static std::wstring FormatTime(double seconds) {
@@ -51,12 +65,115 @@ void NowPlayingCard::Create(IDWriteFactory* dwrite, float scale) {
     elapsedFont->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
     totalFont = SingleLineFont(dwrite, L"Segoe UI Variable Text", 11 * scale);
     totalFont->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+    nextTitleFont = TrimmedFont(dwrite, L"Segoe UI Variable Text", 12 * scale, DWRITE_FONT_WEIGHT_NORMAL);
+    nextArtistFont = TrimmedFont(dwrite, L"Segoe UI Variable Text", 10.5f * scale, DWRITE_FONT_WEIGHT_NORMAL);
+}
+
+// Degradês das pontas do carrossel (transparente -> opaco), criados uma vez; os pontos mudam a cada desenho.
+void NowPlayingCard::CreateFades(ID2D1DeviceContext* dc) {
+    if (fadeLeft) return;
+
+    D2D1_GRADIENT_STOP stops[2] = {{0, {1, 1, 1, 0}}, {1, {1, 1, 1, 1}}};
+    ComPtr<ID2D1GradientStopCollection> collection;
+    dc->CreateGradientStopCollection(stops, 2, &collection);
+    dc->CreateLinearGradientBrush({}, collection.Get(), &fadeLeft);
+    dc->CreateLinearGradientBrush({}, collection.Get(), &fadeRight);
+}
+
+// Texto de uma linha que, se não couber em `width`, roda como carrossel da direita para a esquerda: parado 2,5 s no
+// começo, anda até a cópia seguinte chegar no lugar e recomeça. As pontas somem num degradê; o da esquerda cresce
+// quando o texto sai andando e encolhe quando a cópia chega, para o começo parado ficar nítido.
+void NowPlayingCard::DrawMarquee(ID2D1DeviceContext* dc, ID2D1Brush* brush, IDWriteTextLayout* text, float textWidth, D2D1_POINT_2F at,
+                                 float width, float height, float s, double since) {
+    if (textWidth <= width) {
+        dc->DrawTextLayout(at, text, brush);
+        return;
+    }
+
+    const float cycle = textWidth + kMarqueeGap * s;
+    double moving = cycle / (kMarqueeSpeed * s), t = fmod(Now() - since, kMarqueePause + moving);
+    float offset = t < kMarqueePause ? 0 : float(t - kMarqueePause) * kMarqueeSpeed * s;
+    float leftFade = std::max(std::min({offset, cycle - offset, kMarqueeFade * s}), 0.01f);
+    D2D1_RECT_F clip{at.x, at.y, at.x + width, at.y + height};
+
+    fadeRight->SetStartPoint({clip.right, 0});
+    fadeRight->SetEndPoint({clip.right - kMarqueeFade * s, 0});
+    fadeLeft->SetStartPoint({clip.left, 0});
+    fadeLeft->SetEndPoint({clip.left + leftFade, 0});
+    dc->PushLayer(D2D1::LayerParameters1(clip, nullptr, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1::IdentityMatrix(), 1, fadeRight.Get()), nullptr);
+    dc->PushLayer(D2D1::LayerParameters1(clip, nullptr, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1::IdentityMatrix(), 1, fadeLeft.Get()), nullptr);
+    dc->DrawTextLayout({at.x - offset, at.y}, text, brush);
+    dc->DrawTextLayout({at.x - offset + cycle, at.y}, text, brush);
+    dc->PopLayer();
+    dc->PopLayer();
+}
+
+// Quanto a linha da próxima música empurra os anéis para baixo (acompanha o fade dela).
+float NowPlayingCard::NextRowHeight(float scale) const {
+    return nextAlpha * nextAlpha * (3 - 2 * nextAlpha) * (kNextGap + kNextRow) * scale;
+}
+
+// Linha da próxima música (capa pequena, nome e banda): aparece com fade quando a fila lida é da música que está no
+// cartão (o Spotify informa qual tocava) e some antes de trocar o texto. A capa entra quando chega.
+void NowPlayingCard::UpdateNext(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NextTrack const& next, CornerLayout const& layout, float dt) {
+    const float s = layout.scale;
+    std::wstring key = next.title + L"\n" + next.artist;
+    bool valid = showing && !next.title.empty() && next.after == title;
+
+    if (key != nextKey && nextAlpha == 0) {
+        float width = layout.right - layout.cardLeft - (kNextRow + 10) * s;
+        nextKey = key;
+        dwrite->CreateTextLayout(next.title.c_str(), (UINT)next.title.size(), nextTitleFont.Get(), kUnbounded, 16 * s, &nextTitleLayout);
+        nextTitleWidth = LayoutWidth(nextTitleLayout.Get());
+        nextSince = Now();
+        dwrite->CreateTextLayout(next.artist.c_str(), (UINT)next.artist.size(), nextArtistFont.Get(), width, 14 * s, &nextArtistLayout);
+        nextCover = nullptr;
+        nextCoverBrush = nullptr;
+    }
+
+    if (key == nextKey && next.cover != nextCover) {
+        int size = NextCoverSize();
+        ComPtr<ID2D1Bitmap> bitmap;
+        nextCover = next.cover;
+        nextCoverBrush = nullptr;
+        if (nextCover && SUCCEEDED(dc->CreateBitmap({UINT(size), UINT(size)}, nextCover->data(), size * 4,
+                                                    {{DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED}, 96, 96}, &bitmap)))
+            dc->CreateBitmapBrush(bitmap.Get(), &nextCoverBrush);
+    }
+
+    nextAlpha = std::clamp(nextAlpha + (valid && key == nextKey ? 3 : -3) * dt, 0.f, 1.f);
+}
+
+// Desenha a linha da próxima música embaixo da capa: capa de 26 DIPs (um quadrado apagado enquanto não chega), nome
+// (~#D9D9D9) e banda (~#999999) em letra pequena.
+void NowPlayingCard::DrawNext(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility) {
+    float alpha = visibility * nextAlpha;
+    if (alpha <= 0) return;
+
+    const float s = layout.scale, size = float(NextCoverSize()), top = roundf(layout.top + 2 * s) + CoverSize() + kNextGap * s;
+    const float x = layout.cardLeft + size + 10 * s;
+    D2D1_ROUNDED_RECT frame{{layout.cardLeft, top, layout.cardLeft + size, top + size}, 4 * s, 4 * s};
+
+    if (nextCoverBrush) {
+        nextCoverBrush->SetTransform(D2D1::Matrix3x2F::Translation(layout.cardLeft, top));
+        nextCoverBrush->SetOpacity(alpha);
+        dc->FillRoundedRectangle(frame, nextCoverBrush.Get());
+    } else {
+        brush->SetColor({1, 1, 1, 0.06f * alpha});
+        dc->FillRoundedRectangle(frame, brush);
+    }
+
+    brush->SetColor({0.85f, 0.85f, 0.85f, 0.95f * alpha});
+    DrawMarquee(dc, brush, nextTitleLayout.Get(), nextTitleWidth, {x, top - 2 * s}, layout.right - x, 16 * s, s, nextSince);
+    brush->SetColor({0.6f, 0.6f, 0.6f, 0.95f * alpha});
+    dc->DrawTextLayout({x, top + 12 * s}, nextArtistLayout.Get(), brush);
 }
 
 // O cartão aparece e some devagar (0,5 s): fica enquanto a música toca e mais 3 s depois de pausar (dá tempo de
 // apertar play de novo). Na troca de música some, troca o texto (e a capa) e volta. A capa desta música entra com
 // fade quando chega. O título deixa espaço para os botões e o artista, para a barra de progresso.
-void NowPlayingCard::Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowPlaying const& song, CornerLayout const& layout, float dt) {
+void NowPlayingCard::Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowPlaying const& song, NextTrack const& next, CornerLayout const& layout,
+                            float dt) {
     bool changed = song.title != title || song.artist != artist;
     playing = song.playing;
     position = song.position;
@@ -74,8 +191,9 @@ void NowPlayingCard::Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowP
         float width = layout.right - layout.textLeft;
         title = song.title;
         artist = song.artist;
-        dwrite->CreateTextLayout(title.c_str(), (UINT)title.size(), titleFont.Get(), width - (3 * kMediaButton + 6) * layout.scale,
-                                 30 * layout.scale, &titleLayout);
+        dwrite->CreateTextLayout(title.c_str(), (UINT)title.size(), titleFont.Get(), kUnbounded, 30 * layout.scale, &titleLayout);
+        titleWidth = LayoutWidth(titleLayout.Get());
+        titleSince = Now();
         float progress = kProgressGap + 2 * (kTimeReserve + kTimeGap) + kProgressMin;
         dwrite->CreateTextLayout(artist.c_str(), (UINT)artist.size(), artistFont.Get(), width - progress * layout.scale, 22 * layout.scale,
                                  &artistLayout);
@@ -98,6 +216,8 @@ void NowPlayingCard::Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowP
     }
 
     coverAlpha = std::min(coverAlpha + 2 * dt, 1.f);
+    UpdateNext(dc, dwrite, next, layout, dt);
+    CreateFades(dc);
 }
 
 // Botões ⏮ ⏯ ⏭ (ícones da Segoe Fluent Icons): o que está sob o mouse ganha um fundo claro arredondado, mais claro
@@ -121,12 +241,12 @@ void NowPlayingCard::DrawButtons(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* b
 // Barra de progresso da música na linha do artista, do fim do nome até a borda direita: tempo decorrido, trilho
 // apagado com o preenchimento claro por cima (cantos redondos) e a duração. Os dois tempos ficam em caixas da largura
 // da duração (o decorrido nunca passa dela), então a barra não pula. Entre uma leitura e outra (1 s) a posição anda
-// com o relógio.
+// com o relógio, no máximo 2 s (leitura velha não adianta o tempo).
 void NowPlayingCard::DrawProgress(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility) {
     if (duration <= 0) return;
 
     const float s = layout.scale, y = roundf(layout.top + 2 * s) + 39 * s, start = roundf(layout.textLeft + artistWidth + kProgressGap * s);
-    double elapsed = std::clamp(position + (playing ? Now() - readAt : 0), 0.0, duration);
+    double elapsed = std::clamp(position + (playing ? std::min(Now() - readAt, 2.0) : 0), 0.0, duration);
     std::wstring elapsedText = FormatTime(elapsed);
     D2D1_RECT_F elapsedBox{start, y - 9 * s, start + totalWidth, y + 9 * s};
     D2D1_RECT_F totalBox{layout.right - totalWidth, y - 9 * s, layout.right, y + 9 * s};
@@ -155,7 +275,7 @@ void NowPlayingCard::Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, C
     const float left = layout.textLeft, width = layout.right - layout.textLeft;
 
     brush->SetColor({0.95f, 0.95f, 0.95f, 0.97f * visibility});
-    dc->DrawTextLayout({left, top - 2 * s}, titleLayout.Get(), brush);
+    DrawMarquee(dc, brush, titleLayout.Get(), titleWidth, {left, top - 2 * s}, width - (3 * kMediaButton + 6) * s, 30 * s, s, titleSince);
     brush->SetColor({0.78f, 0.78f, 0.78f, 0.95f * visibility});
     dc->DrawTextLayout({left, top + 28 * s}, artistLayout.Get(), brush);
     DrawButtons(dc, brush, layout, visibility, hovered, pressed);
@@ -176,6 +296,7 @@ void NowPlayingCard::Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, C
         coverBrush->SetOpacity(visibility * coverAlpha);
         dc->FillRoundedRectangle(frame, coverBrush.Get());
     }
+    DrawNext(dc, brush, layout, visibility);
 }
 
 // Fontes dos anéis (centralizadas): % em cima, temperatura/GB/↑ embaixo e o nome.
