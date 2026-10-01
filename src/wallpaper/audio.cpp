@@ -1,9 +1,50 @@
 #include "wallpaper/audio.h"
 
 #include <mmdeviceapi.h>
+#include <audiopolicy.h>
 #include <algorithm>
 #include <cmath>
 #include <complex>
+
+// O processo é o Spotify.exe?
+static bool IsSpotify(DWORD pid) {
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!process) return false;
+
+    wchar_t path[MAX_PATH];
+    DWORD size = MAX_PATH;
+    bool spotify = QueryFullProcessImageNameW(process, 0, path, &size) && !_wcsicmp(wcsrchr(path, L'\\') + 1, L"Spotify.exe");
+    CloseHandle(process);
+    return spotify;
+}
+
+// O Spotify está tocando som neste PC (sessão de áudio dele ativa na saída padrão)? Tocando em outro aparelho
+// (Spotify Connect), ele continua dizendo "tocando" na sessão de mídia, mas aqui não sai som. Se não der para ver as
+// sessões, responde que sim (o comportamento de antes).
+bool SpotifyAudible() {
+    ComPtr<IMMDeviceEnumerator> enumerator;
+    ComPtr<IMMDevice> device;
+    ComPtr<IAudioSessionManager2> manager;
+    ComPtr<IAudioSessionEnumerator> sessions;
+    int count = 0;
+
+    if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator))) ||
+        FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &device)) ||
+        FAILED(device->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr, (void**)manager.GetAddressOf())) ||
+        FAILED(manager->GetSessionEnumerator(&sessions)) || FAILED(sessions->GetCount(&count)))
+        return true;
+
+    for (int i = 0; i < count; i++) {
+        ComPtr<IAudioSessionControl> control;
+        ComPtr<IAudioSessionControl2> control2;
+        AudioSessionState state;
+        DWORD pid = 0;
+        if (SUCCEEDED(sessions->GetSession(i, &control)) && SUCCEEDED(control.As(&control2)) && SUCCEEDED(control->GetState(&state)) &&
+            state == AudioSessionStateActive && SUCCEEDED(control2->GetProcessId(&pid)) && IsSpotify(pid))
+            return true;
+    }
+    return false;
+}
 
 // Loopback da saída padrão (onde o Spotify toca): mono, float, 48 kHz (o Windows converte). A captura abre uma sessão
 // de áudio em nome do FundoVivo e DISPLAY_HIDE a tira do Mixer de Volume. Pega todo o som dessa saída, não só o do
@@ -97,7 +138,24 @@ void Equalizer::Update(bool active, float dt) {
             target[band] = std::clamp((decibels[band] - average[band] + 4) / 18, 0.f, 1.f);
         }
     }
+    Approach(target, dt);
+}
 
+// Sem som neste PC (o Spotify tocando em outro aparelho), as barras dançam sozinhas para o cartão não ficar parado:
+// duas ondas lentas por banda, com fases diferentes, e um pulso de ~120 bpm nos graves. Não é o som de verdade.
+void Equalizer::Simulate(double time, float dt) {
+    float target[kBands], t = float(fmod(time, 3600.0)), beat = powf(0.5f + 0.5f * sinf(t * 12.566371f), 6);
+
+    for (int band = 0; band < kBands; band++) {
+        float b = float(band), wave = 0.45f + 0.25f * sinf(t * (1.3f + 0.11f * b) + b * 1.7f) + 0.15f * sinf(t * (3.1f + 0.07f * b) + b * 0.6f);
+        float bass = band < 6 ? beat * (1 - b / 6) * 0.45f : 0;
+        target[band] = std::clamp(wave * (0.8f - 0.35f * b / kBands) + bass, 0.f, 1.f);
+    }
+    Approach(target, dt);
+}
+
+// Leva as barras até o alvo: sobem rápido e caem devagar.
+void Equalizer::Approach(float const* target, float dt) {
     for (int band = 0; band < kBands; band++)
         level[band] += (target[band] - level[band]) * std::min(1.f, dt * (target[band] > level[band] ? 30 : 5));
 }

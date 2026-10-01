@@ -1,4 +1,5 @@
 #include "wallpaper/media.h"
+#include "wallpaper/audio.h"
 #include "wallpaper/desktop.h"
 #include "wallpaper/timing.h"
 
@@ -26,6 +27,12 @@ struct TimelineAnchor {
     winrt::Windows::Foundation::TimeSpan position{};
     bool playing = false;
     winrt::clock::time_point seen{};
+};
+
+struct SpotifyState {
+    CoverState cover;
+    TimelineAnchor anchor;
+    int quietReads = 0;
 };
 
 static std::mutex g_mutex;
@@ -68,7 +75,9 @@ static std::shared_ptr<std::vector<BYTE>> DecodeCover(winrt::Windows::Storage::S
     return DecodeImage(input.Get(), CoverSize());
 }
 
-// Capa da música atual: espera 1 s depois da troca (a capa às vezes chega depois do título) e tenta por alguns segundos.
+// Capa da música atual. Logo depois da troca o Spotify às vezes ainda entrega a capa da música anterior, ou uma pela
+// metade: tenta a cada segundo até ter uma (a partir de 1 s depois da troca), relê aos 3 s e aos 6 s e depois a cada
+// 10 s, e só troca quando a imagem mudou (a mesma imagem não refaz o fade no cartão).
 static void UpdateCover(GlobalSystemMediaTransportControlsSessionMediaProperties const& properties, NowPlaying const& song, CoverState& cover) {
     std::wstring key = song.title + L"\n" + song.artist;
     if (key != cover.song) {
@@ -77,9 +86,13 @@ static void UpdateCover(GlobalSystemMediaTransportControlsSessionMediaProperties
         cover.attempts = 0;
     }
 
-    if (!cover.pixels && ++cover.attempts >= 2 && cover.attempts < 10) {
-        try { cover.pixels = DecodeCover(properties.Thumbnail()); } catch (...) {}
-    }
+    int attempt = ++cover.attempts;
+    bool due = (!cover.pixels && attempt >= 2 && attempt < 10) || attempt == 4 || attempt == 7 || attempt % 10 == 0;
+    if (!due) return;
+
+    std::shared_ptr<std::vector<BYTE>> pixels;
+    try { pixels = DecodeCover(properties.Thumbnail()); } catch (...) {}
+    if (pixels && (!cover.pixels || *pixels != *cover.pixels)) cover.pixels = pixels;
 }
 
 // Posição e duração da música em segundos, pela linha do tempo da sessão: a última posição informada pelo player,
@@ -103,8 +116,10 @@ static void ReadTimeline(GlobalSystemMediaTransportControlsSession const& sessio
     song.readAt = Now();
 }
 
-// O que o Spotify está tocando agora (tocando ou pausado); vazio se ele não tiver sessão de mídia.
-static NowPlaying ReadSpotify(GlobalSystemMediaTransportControlsSessionManager const& manager, CoverState& cover, TimelineAnchor& anchor) {
+// O que o Spotify está tocando agora (tocando ou pausado); vazio se ele não tiver sessão de mídia. Tocando, diz também
+// se o som sai neste PC: sem a sessão de áudio dele por 3 leituras seguidas (entre uma música e outra ela some por um
+// instante), está tocando em outro aparelho.
+static NowPlaying ReadSpotify(GlobalSystemMediaTransportControlsSessionManager const& manager, SpotifyState& state) {
     NowPlaying song;
 
     for (auto session : manager.GetSessions()) {
@@ -114,9 +129,11 @@ static NowPlaying ReadSpotify(GlobalSystemMediaTransportControlsSessionManager c
         auto properties = session.TryGetMediaPropertiesAsync().get();
         song.title = properties.Title();
         song.artist = properties.Artist();
-        UpdateCover(properties, song, cover);
-        song.cover = cover.pixels;
-        ReadTimeline(session, song, anchor);
+        UpdateCover(properties, song, state.cover);
+        song.cover = state.cover.pixels;
+        ReadTimeline(session, song, state.anchor);
+        state.quietReads = song.playing && !SpotifyAudible() ? state.quietReads + 1 : 0;
+        song.elsewhere = state.quietReads >= 3;
         break;
     }
     return song;
@@ -127,14 +144,13 @@ static NowPlaying ReadSpotify(GlobalSystemMediaTransportControlsSessionManager c
 static void MediaLoop() {
     winrt::init_apartment();
     GlobalSystemMediaTransportControlsSessionManager manager{nullptr};
-    CoverState cover;
-    TimelineAnchor anchor;
+    SpotifyState state;
 
     for (;;) {
         NowPlaying song;
         try {
             if (!manager) manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();
-            song = ReadSpotify(manager, cover, anchor);
+            song = ReadSpotify(manager, state);
         } catch (...) {
             manager = nullptr;
         }

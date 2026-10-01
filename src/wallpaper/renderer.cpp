@@ -191,6 +191,7 @@ private:
     double lastReading = -10;
     float presence = 0;
     bool morphLoaded = false;
+    bool dancing = false;
     char theme = 'n';
 
     void UpdateCapture(NowPlaying const& song, bool hidden, ULONGLONG now);
@@ -204,15 +205,15 @@ private:
     void WaitNextFrame(double frameStart);
 };
 
-// Captura o som só enquanto o Spotify toca e alguém vê o fundo; se falhar, tenta de novo em 10 s.
+// Captura o som só enquanto o Spotify toca neste PC e alguém vê o fundo; se falhar, tenta de novo em 10 s.
 void Wallpaper::UpdateCapture(NowPlaying const& song, bool hidden, ULONGLONG now) {
-    if (song.playing && !hidden && !capture && now >= nextCaptureAttempt) {
+    if (song.playing && !song.elsewhere && !hidden && !capture && now >= nextCaptureAttempt) {
         capture = StartLoopbackCapture(audioClient);
         if (!capture) {
             audioClient = nullptr;
             nextCaptureAttempt = now + 10000;
         }
-    } else if ((!song.playing || hidden) && audioClient) {
+    } else if ((!song.playing || song.elsewhere || hidden) && audioClient) {
         audioClient->Stop();
         capture = nullptr;
         audioClient = nullptr;
@@ -237,14 +238,17 @@ bool Wallpaper::CheckState(HWND parent, Surface const& surface, NowPlaying const
     return false;
 }
 
-// Equalizador, cartão da música, a subida/descida do bloco e, a cada 1,5 s (só com o fundo visível), os anéis e a rede;
-// o clima começa junto da primeira leitura.
+// Equalizador (o som de verdade, ou dançando sozinho com o Spotify tocando em outro aparelho), cartão da música, a
+// subida/descida do bloco e, a cada 1,5 s (só com o fundo visível), os anéis e a rede; o clima começa junto da
+// primeira leitura.
 void Wallpaper::UpdateWidgets(NowPlaying const& song, Monitors const& monitors, double now) {
     float dt = std::min(float(now - previousFrame), 0.1f);
     previousFrame = now;
 
     equalizer.Read(capture.Get());
-    if (card.alpha > 0 || capture) equalizer.Update(capture != nullptr, dt);
+    dancing = song.playing && song.elsewhere;
+    if (dancing) equalizer.Simulate(now, dt);
+    else if (card.alpha > 0 || capture) equalizer.Update(capture != nullptr, dt);
     card.Update(g.dc.Get(), g.dwrite.Get(), song, CurrentNextTrack(), monitors.layout, dt);
     presence = std::clamp(presence + (card.showing ? 2 : -2) * dt, 0.f, 1.f);
 
@@ -357,7 +361,7 @@ void Wallpaper::RenderFrame(Surface const& surface, Monitors const& monitors, No
 // 60 fps enquanto o equalizador anda; senão ~30 (o movimento é lento, mais seria desperdício). O monitor é de 239 Hz,
 // então quem dita o ritmo é este timer de alta resolução (o Sleep só tem resolução de ~16 ms).
 void Wallpaper::WaitNextFrame(double frameStart) {
-    double frame = capture ? 1 / 60.0 : 1 / 30.0;
+    double frame = capture || dancing ? 1 / 60.0 : 1 / 30.0;
     LARGE_INTEGER due{.QuadPart = -LONGLONG(1e7 * std::max(0.001, frame - (Now() - frameStart)))};
 
     SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE);

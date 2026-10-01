@@ -17,6 +17,11 @@ struct Equalizer {
 
     void Read(IAudioCaptureClient* capture);
     void Update(bool active, float dt);
+    void Simulate(double time, float dt);
+
+private:
+    void Approach(float const* target, float dt);
 };
 
 ComPtr<IAudioCaptureClient> StartLoopbackCapture(ComPtr<IAudioClient>& client);
+bool SpotifyAudible();
