@@ -265,7 +265,7 @@ void NowPlayingCard::DrawProgress(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* 
 // Cartão de largura fixa no canto: capa à esquerda (cantos levemente arredondados; enquanto não chega, um quadrado bem
 // apagado no lugar), título (~#F2F2F2) e artista (~#C8C8C8) colados nela até a borda direita, os botões na linha do
 // título, a barra de progresso na do artista e o equalizador na base da capa, de ponta a ponta, com graves à esquerda
-// e agudos à direita.
+// e agudos à direita. A barra que chega perto do teto vai ficando vermelho bem suave (~#F29191 no teto).
 void NowPlayingCard::Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, Equalizer const& equalizer,
                           float visibility, int hovered, int pressed) {
     const float s = layout.scale, top = roundf(layout.top + 2 * s), size = float(CoverSize());
@@ -280,8 +280,9 @@ void NowPlayingCard::Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, C
 
     const float barWidth = roundf(width / Equalizer::kBands * 0.5f), step = (width - barWidth) / (Equalizer::kBands - 1), base = top + size;
     for (int i = 0; i < Equalizer::kBands; i++) {
-        float height = (2 + 30 * equalizer.level[i]) * s, x = roundf(left + i * step);
-        brush->SetColor({0.9f, 0.9f, 0.9f, (0.6f + 0.4f * equalizer.level[i]) * visibility});
+        float level = equalizer.level[i], height = (2 + 30 * level) * s, x = roundf(left + i * step);
+        float red = std::clamp((level - 0.85f) / 0.15f, 0.f, 1.f);
+        brush->SetColor({0.9f + 0.05f * red, 0.9f - 0.35f * red, 0.9f - 0.35f * red, (0.6f + 0.4f * level) * visibility});
         dc->FillRectangle({x, base - height, x + barWidth, base}, brush);
     }
 
