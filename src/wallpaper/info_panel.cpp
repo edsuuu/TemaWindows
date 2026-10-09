@@ -1,5 +1,6 @@
 #include "wallpaper/info_panel.h"
 #include "wallpaper/desktop.h"
+#include "wallpaper/light_switch.h"
 #include "wallpaper/text.h"
 
 #include <algorithm>
@@ -52,9 +53,11 @@ static std::wstring Uptime(ULONGLONG minutes) {
     return Format(L"%llumin", minutes);
 }
 
-// O JSON do painel (uptime, data e hora, specs do PC e monitores), com a cor de cada pedaço: 0 pontuação, 1 chave,
-// 2 string.
-static JsonText BuildJson(PcSpecs const& specs, std::vector<std::wstring> const& monitors, SYSTEMTIME const& now, ULONGLONG minutes) {
+// O JSON do painel (uptime, data e hora, luz do quarto, specs do PC e monitores), com a cor de cada pedaço: 0
+// pontuação, 1 chave, 2 string, 4 true (verde suave), 5 false (vermelho suave). A luz (linha 2, clicável) só entra
+// quando o estado é conhecido.
+static JsonText BuildJson(PcSpecs const& specs, std::vector<std::wstring> const& monitors, SYSTEMTIME const& now, ULONGLONG minutes,
+                          int light) {
     JsonText json;
     auto add = [&](std::wstring const& piece, int color) {
         json.runs.push_back({(UINT32)json.text.size(), (UINT32)piece.size(), color});
@@ -72,6 +75,13 @@ static JsonText BuildJson(PcSpecs const& specs, std::vector<std::wstring> const&
     field(L"  ", L"uptime", JsonString(Uptime(minutes)), L", ");
     field(L"", L"date", JsonString(Format(L"%02d/%02d/%04d %02d:%02d:%02d", now.wDay, now.wMonth, now.wYear, now.wHour, now.wMinute,
                                           now.wSecond)));
+    if (light >= 0) {
+        add(L"  ", 0);
+        add(L"\"luzQuarto\"", 1);
+        add(L": ", 0);
+        add(light ? L"true" : L"false", light ? 4 : 5);
+        add(L",\n", 0);
+    }
     add(L"  ", 0);
     add(L"\"pc\"", 1);
     add(L": {\n", 0);
@@ -95,7 +105,8 @@ static JsonText BuildJson(PcSpecs const& specs, std::vector<std::wstring> const&
 }
 
 // Contexto próprio do Direct2D (o do quadro está no meio do desenho quando o bitmap é refeito), fontes, cores do JSON
-// (pontuação apagada, chaves cinza médio, strings quase brancas, números brancos), ícones e as specs, lidas uma vez.
+// (pontuação apagada, chaves cinza médio, strings quase brancas, números brancos, true verde suave, false vermelho
+// suave), ícones e as specs, lidas uma vez.
 void InfoPanel::Create(ID2D1DeviceContext* screen) {
     ComPtr<ID2D1Device> device;
     screen->GetDevice(&device);
@@ -106,8 +117,9 @@ void InfoPanel::Create(ID2D1DeviceContext* screen) {
     scale = DpiScale();
 
     dc->CreateSolidColorBrush({1, 1, 1, 1}, &brush);
-    const D2D1_COLOR_F colors[4] = {{.46f, .46f, .46f, 1}, {.66f, .66f, .66f, 1}, {.90f, .90f, .90f, 1}, {1, 1, 1, 1}};
-    for (int i = 0; i < 4; i++) dc->CreateSolidColorBrush(colors[i], &jsonColors[i]);
+    const D2D1_COLOR_F colors[6] = {{.46f, .46f, .46f, 1}, {.66f, .66f, .66f, 1}, {.90f, .90f, .90f, 1},
+                                    {1, 1, 1, 1},          {.56f, .82f, .56f, 1}, {.85f, .56f, .56f, 1}};
+    for (int i = 0; i < 6; i++) dc->CreateSolidColorBrush(colors[i], &jsonColors[i]);
 
     temperatureFont = SingleLineFont(dwrite.Get(), L"Segoe UI Variable Display", 34 * scale, DWRITE_FONT_WEIGHT_SEMI_LIGHT);
     skyFont = SingleLineFont(dwrite.Get(), L"Segoe UI Variable Text", 13.5f * scale);
@@ -160,7 +172,8 @@ void InfoPanel::Render(SYSTEMTIME const& now, int width) {
     if (monitors.empty() || now.wSecond == 0) monitors = ReadMonitors();
 
     bool hasWeather = !std::isnan(weather.temperature) && weather.code >= 0;
-    JsonText json = BuildJson(specs, monitors, now, GetTickCount64() / 60000);
+    int light = LightState();
+    JsonText json = BuildJson(specs, monitors, now, GetTickCount64() / 60000, light);
     std::wstring temperature = hasWeather ? Format(L"%.0f°", weather.temperature) : L"";
     std::wstring sky = hasWeather ? SkyText(weather.code) : L"";
     std::wstring range = hasWeather && !std::isnan(weather.maximum) ? Format(L"máx %.0f°  ·  mín %.0f°", weather.maximum, weather.minimum) : L"";
@@ -193,6 +206,12 @@ void InfoPanel::Render(SYSTEMTIME const& now, int width) {
     float beside = WidthBeside(json.text, kLineHeight * scale, charWidth, columnTop, columnTop + columnHeight);
     float columnLeft = hasWeather ? beside + kWeatherGap * scale : 0;
     float x = std::round((width - std::max(metrics.width, columnLeft + widest)) / 2);
+    lightLine = {};
+    if (light >= 0) {
+        size_t start = json.text.find(L'\n', json.text.find(L'\n') + 1) + 1, end = json.text.find(L'\n', start);
+        float lh = kLineHeight * scale, pad = 4 * scale;
+        lightLine = {x + 2 * charWidth - pad, 2 * lh, x + (end - start) * charWidth + pad, 3 * lh};
+    }
 
     dc->SetTarget(bitmap.Get());
     dc->BeginDraw();
@@ -211,9 +230,10 @@ float InfoPanel::Height() const {
 }
 
 // Desenha embaixo dos anéis (a transformação do monitor já está posta): x = borda esquerda da capa da música, y =
-// embaixo das legendas, width = largura do bloco do canto. Clima + JSON são um bitmap refeito só quando o texto muda (1x por
-// segundo, pelo relógio); por quadro é um DrawBitmap por monitor.
-void InfoPanel::Draw(ID2D1DeviceContext* screen, float x, float y, float width) {
+// embaixo das legendas, width = largura do bloco do canto. Clima + JSON são um bitmap refeito só quando o texto muda
+// (1x por segundo, pelo relógio); por quadro é um DrawBitmap por monitor. Com o mouse em cima da linha da luz, ela
+// ganha um fundo claro arredondado; o retângulo dela fica guardado para a janela de clique.
+void InfoPanel::Draw(ID2D1DeviceContext* screen, float x, float y, float width, bool lightHovered) {
     if (!dc) Create(screen);
 
     SYSTEMTIME now;
@@ -226,5 +246,18 @@ void InfoPanel::Draw(ID2D1DeviceContext* screen, float x, float y, float width) 
 
     x = roundf(x);
     y = roundf(y + kGapBelowRings * scale);
+    lightRect = lightLine.right > lightLine.left
+                    ? D2D1_RECT_F{x + lightLine.left, y + lightLine.top, x + lightLine.right, y + lightLine.bottom}
+                    : D2D1_RECT_F{};
+    if (lightHovered && lightRect.right > lightRect.left) {
+        D2D1_ROUNDED_RECT plate{lightRect, 4 * scale, 4 * scale};
+        brush->SetColor({1, 1, 1, 0.08f});
+        screen->FillRoundedRectangle(plate, brush.Get());
+    }
     screen->DrawBitmap(bitmap.Get(), D2D1_RECT_F{x, y, x + bitmapWidth, y + bitmapHeight}, 1, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+}
+
+// Retângulo da linha da luz no último desenho (coordenadas do monitor principal), ou vazio sem a linha.
+D2D1_RECT_F InfoPanel::LightRect() const {
+    return lightRect;
 }

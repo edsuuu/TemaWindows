@@ -1,4 +1,5 @@
 #include "wallpaper/folder_icons.h"
+#include "wallpaper/light_switch.h"
 #include "wallpaper/media.h"
 #include "wallpaper/next_track.h"
 #include "wallpaper/renderer.h"
@@ -18,6 +19,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     StartMediaWatcher();
+    StartLightService();
     StartNextTrackService();
     if (Enabled(L"Pastas")) StartFolderIconService();
     return RunWallpaper(instance);

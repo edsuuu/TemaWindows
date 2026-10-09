@@ -3,7 +3,7 @@
 #include "wallpaper/desktop.h"
 #include "wallpaper/golden_theme.h"
 #include "wallpaper/info_panel.h"
-#include "wallpaper/media_buttons.h"
+#include "wallpaper/click_zones.h"
 #include "wallpaper/morph_theme.h"
 #include "wallpaper/nbhd_theme.h"
 #include "wallpaper/timing.h"
@@ -324,7 +324,7 @@ void Wallpaper::DrawOverlay(Surface const& surface, Monitors const& monitors, Bl
         dc->SetTransform(corner);
         if (a > 0) card.Draw(dc, g.brush.Get(), l, equalizer, a, HoveredMediaButton(i), PressedMediaButton(i));
         rings.Draw(dc, g.brush.Get(), g.round.Get(), corner, l, block.ringsY);
-        panel.Draw(dc, l.cardLeft, block.ringsY + l.ringRadius + 22 * l.scale, l.right - l.cardLeft);
+        panel.Draw(dc, l.cardLeft, block.ringsY + l.ringRadius + 22 * l.scale, l.right - l.cardLeft, LightHovered(i));
     }
 
     dc->SetTransform(D2D1::Matrix3x2F::Identity());
@@ -332,18 +332,23 @@ void Wallpaper::DrawOverlay(Surface const& surface, Monitors const& monitors, Bl
     dc->SetTarget(nullptr);
 }
 
-// Janelas que pegam o clique dos botões do cartão, uma por monitor, sobre os três botões (só com o cartão aparecendo e
-// o fundo visível).
-void Wallpaper::UpdateButtons(HWND parent, Monitors const& monitors, bool hidden) {
-    D2D1_RECT_F first = MediaButtonRect(monitors.layout, 0), last = MediaButtonRect(monitors.layout, 2);
+// O mesmo retângulo do bloco do canto em cada monitor, em coordenadas de tela.
+static std::vector<RECT> PerMonitor(HWND parent, Monitors const& monitors, D2D1_RECT_F const& box) {
     std::vector<RECT> rects;
-
     for (auto const& corner : monitors.corners) {
-        RECT r{LONG(first.left + corner._31), LONG(first.top + corner._32), LONG(last.right + corner._31), LONG(last.bottom + corner._32)};
+        RECT r{LONG(box.left + corner._31), LONG(box.top + corner._32), LONG(box.right + corner._31), LONG(box.bottom + corner._32)};
         MapWindowPoints(parent, HWND_DESKTOP, (POINT*)&r, 2);
         rects.push_back(r);
     }
-    PlaceMediaButtons(rects, card.alpha > 0.5f && !hidden);
+    return rects;
+}
+
+// Janelas que pegam o clique, uma por monitor: sobre os três botões do cartão (com o cartão aparecendo) e sobre a
+// linha da luz no JSON (com a linha lá). Só com o fundo visível.
+void Wallpaper::UpdateButtons(HWND parent, Monitors const& monitors, bool hidden) {
+    D2D1_RECT_F first = MediaButtonRect(monitors.layout, 0), last = MediaButtonRect(monitors.layout, 2), light = panel.LightRect();
+    PlaceClickZones(Zone::Media, PerMonitor(parent, monitors, {first.left, first.top, last.right, last.bottom}), card.alpha > 0.5f && !hidden);
+    PlaceClickZones(Zone::Light, PerMonitor(parent, monitors, light), light.right > light.left && !hidden);
 }
 
 // Um quadro inteiro.

@@ -8,15 +8,16 @@
 #include <string>
 
 struct InfoPanel {
-    void Draw(ID2D1DeviceContext* screen, float x, float y, float width);
+    void Draw(ID2D1DeviceContext* screen, float x, float y, float width, bool lightHovered);
     float Height() const;
+    D2D1_RECT_F LightRect() const;
 
 private:
     ComPtr<ID2D1DeviceContext> dc;
     ComPtr<ID2D1Factory> factory;
     ComPtr<IDWriteFactory> dwrite;
     ComPtr<ID2D1SolidColorBrush> brush;
-    ComPtr<ID2D1SolidColorBrush> jsonColors[4];
+    ComPtr<ID2D1SolidColorBrush> jsonColors[6];
     ComPtr<IDWriteTextFormat> temperatureFont;
     ComPtr<IDWriteTextFormat> skyFont;
     ComPtr<IDWriteTextFormat> rangeFont;
@@ -34,6 +35,8 @@ private:
     int weatherVersion = -1;
     float scale = 1;
     float charWidth = 0;
+    D2D1_RECT_F lightLine{};
+    D2D1_RECT_F lightRect{};
 
     void Create(ID2D1DeviceContext* screen);
     void Render(SYSTEMTIME const& now, int width);
