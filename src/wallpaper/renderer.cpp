@@ -343,8 +343,8 @@ static std::vector<RECT> PerMonitor(HWND parent, Monitors const& monitors, D2D1_
     return rects;
 }
 
-// Janelas que pegam o clique, uma por monitor: sobre os três botões do cartão (com o cartão aparecendo) e sobre a
-// linha da luz no JSON (com a linha lá). Só com o fundo visível.
+// Janelas que pegam o clique, uma por monitor: sobre os três botões do cartão (com o cartão aparecendo) e sobre o
+// valor da luz no JSON (com a luz lá). Só com o fundo visível.
 void Wallpaper::UpdateButtons(HWND parent, Monitors const& monitors, bool hidden) {
     D2D1_RECT_F first = MediaButtonRect(monitors.layout, 0), last = MediaButtonRect(monitors.layout, 2), light = panel.LightRect();
     PlaceClickZones(Zone::Media, PerMonitor(parent, monitors, {first.left, first.top, last.right, last.bottom}), card.alpha > 0.5f && !hidden);

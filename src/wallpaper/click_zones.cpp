@@ -23,7 +23,7 @@ static int TargetAt(HWND window, LPARAM point) {
     return zone * 100 + (zone == int(Zone::Media) ? monitor * 3 + std::clamp(int(p.x * 3 / client.right), 0, 2) : monitor);
 }
 
-// Clique completo (apertar e soltar no mesmo alvo): botão da música vira comando para o Spotify; a linha da luz liga
+// Clique completo (apertar e soltar no mesmo alvo): botão da música vira comando para o Spotify; o valor da luz liga
 // ou desliga o interruptor.
 static void Activate(int target) {
     if (target / 100 == int(Zone::Media)) SendMediaCommand(target % 100 % 3);
@@ -113,7 +113,7 @@ int PressedMediaButton(int monitor) {
     return pressed >= 0 && pressed / 100 == int(Zone::Media) && pressed % 100 / 3 == monitor ? pressed % 100 % 3 : -1;
 }
 
-// O mouse está em cima da linha da luz neste monitor?
+// O mouse está em cima do valor da luz neste monitor?
 bool LightHovered(int monitor) {
     return g_hovered == int(Zone::Light) * 100 + monitor;
 }

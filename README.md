@@ -59,9 +59,10 @@ Textos (REG_SZ) que ficam fora do código:
 - `SpotifyClientId` — Client ID do app do Spotify para a próxima música da fila (login uma vez com
   `tools\spotify-login.ps1`; o token fica criptografado em `cache\`).
 
-Luz do quarto (`"luzQuarto": true/false` no JSON, clicável): interruptor Tuya / Smart Life controlado pela rede local
-(protocolo 3.3, porta 6668), sem nuvem. Configure uma vez com `tools\tuya-setup.ps1`, que busca a chave local na API da
-Tuya e guarda id + chave + IP criptografados em `cache\tuya-quarto.bin`; sem esse arquivo, a linha não aparece.
+Luz do quarto (`"bedroom_light": true/false` no JSON, clique no valor): interruptor Tuya / Smart Life controlado
+pela rede local (protocolo 3.3, porta 6668), sem nuvem. Configure uma vez com `tools\tuya-setup.ps1`, que busca a
+chave local na API da Tuya e guarda id + chave + IP criptografados em `cache\tuya-quarto.bin`; sem esse arquivo, a
+linha não aparece.
 
 ## Compilar e recarregar
 

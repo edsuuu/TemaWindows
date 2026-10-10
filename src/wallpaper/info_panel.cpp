@@ -77,7 +77,7 @@ static JsonText BuildJson(PcSpecs const& specs, std::vector<std::wstring> const&
                                           now.wSecond)));
     if (light >= 0) {
         add(L"  ", 0);
-        add(L"\"luzQuarto\"", 1);
+        add(L"\"bedroom_light\"", 1);
         add(L": ", 0);
         add(light ? L"true" : L"false", light ? 4 : 5);
         add(L",\n", 0);
@@ -208,9 +208,9 @@ void InfoPanel::Render(SYSTEMTIME const& now, int width) {
     float x = std::round((width - std::max(metrics.width, columnLeft + widest)) / 2);
     lightLine = {};
     if (light >= 0) {
-        size_t start = json.text.find(L'\n', json.text.find(L'\n') + 1) + 1, end = json.text.find(L'\n', start);
+        size_t start = json.text.find(L'\n', json.text.find(L'\n') + 1) + 1, value = json.text.find(L": ", start) + 2 - start;
         float lh = kLineHeight * scale, pad = 4 * scale;
-        lightLine = {x + 2 * charWidth - pad, 2 * lh, x + (end - start) * charWidth + pad, 3 * lh};
+        lightLine = {x + value * charWidth - pad, 2 * lh, x + (value + (light ? 4 : 5)) * charWidth + pad, 3 * lh};
     }
 
     dc->SetTarget(bitmap.Get());
@@ -231,8 +231,8 @@ float InfoPanel::Height() const {
 
 // Desenha embaixo dos anéis (a transformação do monitor já está posta): x = borda esquerda da capa da música, y =
 // embaixo das legendas, width = largura do bloco do canto. Clima + JSON são um bitmap refeito só quando o texto muda
-// (1x por segundo, pelo relógio); por quadro é um DrawBitmap por monitor. Com o mouse em cima da linha da luz, ela
-// ganha um fundo claro arredondado; o retângulo dela fica guardado para a janela de clique.
+// (1x por segundo, pelo relógio); por quadro é um DrawBitmap por monitor. Com o mouse em cima do valor da luz, ele
+// ganha um fundo claro arredondado; o retângulo dele fica guardado para a janela de clique.
 void InfoPanel::Draw(ID2D1DeviceContext* screen, float x, float y, float width, bool lightHovered) {
     if (!dc) Create(screen);
 
@@ -257,7 +257,7 @@ void InfoPanel::Draw(ID2D1DeviceContext* screen, float x, float y, float width, 
     screen->DrawBitmap(bitmap.Get(), D2D1_RECT_F{x, y, x + bitmapWidth, y + bitmapHeight}, 1, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
 }
 
-// Retângulo da linha da luz no último desenho (coordenadas do monitor principal), ou vazio sem a linha.
+// Retângulo do valor da luz (true/false) no último desenho (coordenadas do monitor principal), ou vazio sem ele.
 D2D1_RECT_F InfoPanel::LightRect() const {
     return lightRect;
 }
