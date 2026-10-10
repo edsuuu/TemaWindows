@@ -36,6 +36,7 @@ struct SwitchConfig {
 
 static std::atomic<int> g_state{-1};
 static std::atomic<int> g_target{-1};
+static std::atomic<bool> g_pending{false};
 static HANDLE g_wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
 
 // Configuração do interruptor (id, chave local e IP), criptografada para o usuário do Windows em
@@ -185,19 +186,28 @@ static void SetSwitch(SwitchConfig const& config, bool on) {
 }
 
 // Thread do interruptor: com o fundo visível, consulta o estado a cada 5 s; um clique acorda a thread na hora, manda
-// o estado pedido e consulta de novo. Sem configuração, não faz nada.
+// o estado pedido e consulta de novo, e só então o clique termina (o JSON mostra "..." enquanto isso). Uma falha de
+// rede isolada mantém o último estado; 3 seguidas tiram a linha do JSON. Sem configuração, não faz nada.
 static void LightLoop() {
     winrt::init_apartment();
     WSADATA wsa;
     SwitchConfig config;
+    int failures = 0;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) || !LoadConfig(config)) return;
 
     for (;;) {
-        if (int target = g_target.exchange(-1); target >= 0) {
+        int target = g_target.exchange(-1);
+        if (target >= 0) {
             SetSwitch(config, target == 1);
             Sleep(300);
         }
-        if (!WallpaperHidden()) g_state = QuerySwitch(config);
+
+        if (target >= 0 || !WallpaperHidden()) {
+            int state = QuerySwitch(config);
+            if (state >= 0) failures = 0;
+            if (state >= 0 || ++failures >= 3) g_state = state;
+        }
+        g_pending = false;
         WaitForSingleObject(g_wake, kPollMs);
     }
 }
@@ -212,12 +222,18 @@ int LightState() {
     return g_state;
 }
 
-// Inverte a luz (o estado na tela já troca; a thread confirma pela rede logo depois).
+// Há um clique esperando a resposta do interruptor?
+bool LightPending() {
+    return g_pending;
+}
+
+// Inverte a luz: pede o contrário do estado atual e marca como pendente até a thread confirmar pela rede. Clique
+// durante a espera é ignorado.
 void ToggleLight() {
     int state = g_state;
-    if (state < 0) return;
+    if (state < 0 || g_pending) return;
 
+    g_pending = true;
     g_target = 1 - state;
-    g_state = 1 - state;
     SetEvent(g_wake);
 }

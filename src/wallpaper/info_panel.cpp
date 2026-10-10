@@ -55,9 +55,9 @@ static std::wstring Uptime(ULONGLONG minutes) {
 
 // O JSON do painel (uptime, data e hora, luz do quarto, specs do PC e monitores), com a cor de cada pedaço: 0
 // pontuação, 1 chave, 2 string, 4 true (verde suave), 5 false (vermelho suave). A luz (linha 2, clicável) só entra
-// quando o estado é conhecido.
+// quando o estado é conhecido; enquanto um clique espera o interruptor, o valor vira 1 a 3 pontinhos (`dots`) cinza.
 static JsonText BuildJson(PcSpecs const& specs, std::vector<std::wstring> const& monitors, SYSTEMTIME const& now, ULONGLONG minutes,
-                          int light) {
+                          int light, int dots) {
     JsonText json;
     auto add = [&](std::wstring const& piece, int color) {
         json.runs.push_back({(UINT32)json.text.size(), (UINT32)piece.size(), color});
@@ -77,9 +77,9 @@ static JsonText BuildJson(PcSpecs const& specs, std::vector<std::wstring> const&
                                           now.wSecond)));
     if (light >= 0) {
         add(L"  ", 0);
-        add(L"\"luz_acesa\"", 1);
+        add(L"\"light_on\"", 1);
         add(L": ", 0);
-        add(light ? L"true" : L"false", light ? 4 : 5);
+        add(dots ? std::wstring(dots, L'.') : light ? L"true" : L"false", dots ? 1 : light ? 4 : 5);
         add(L",\n", 0);
     }
     add(L"  ", 0);
@@ -163,7 +163,7 @@ void InfoPanel::DrawWeatherColumn(float center, float halfWidth, float top, std:
 // 1x por segundo: dados novos (monitores 1x por minuto, para pegar troca de resolução ou de Hz) e, se o texto mudou, o
 // bitmap do bloco (largura = a do bloco do canto). O clima fica em coluna logo à direita das linhas do JSON que estão
 // ao lado dele, centralizado na altura do JSON; JSON + clima ficam centralizados no bloco, embaixo dos anéis.
-void InfoPanel::Render(SYSTEMTIME const& now, int width) {
+void InfoPanel::Render(SYSTEMTIME const& now, int width, int dots) {
     if (WeatherVersion() != weatherVersion) {
         weatherVersion = WeatherVersion();
         weather = ParseWeather(WeatherJson(), now);
@@ -173,7 +173,7 @@ void InfoPanel::Render(SYSTEMTIME const& now, int width) {
 
     bool hasWeather = !std::isnan(weather.temperature) && weather.code >= 0;
     int light = LightState();
-    JsonText json = BuildJson(specs, monitors, now, GetTickCount64() / 60000, light);
+    JsonText json = BuildJson(specs, monitors, now, GetTickCount64() / 60000, light, dots);
     std::wstring temperature = hasWeather ? Format(L"%.0f°", weather.temperature) : L"";
     std::wstring sky = hasWeather ? SkyText(weather.code) : L"";
     std::wstring range = hasWeather && !std::isnan(weather.maximum) ? Format(L"máx %.0f°  ·  mín %.0f°", weather.maximum, weather.minimum) : L"";
@@ -210,7 +210,7 @@ void InfoPanel::Render(SYSTEMTIME const& now, int width) {
     if (light >= 0) {
         size_t start = json.text.find(L'\n', json.text.find(L'\n') + 1) + 1, value = json.text.find(L": ", start) + 2 - start;
         float lh = kLineHeight * scale, pad = 4 * scale;
-        lightLine = {x + value * charWidth - pad, 2 * lh, x + (value + (light ? 4 : 5)) * charWidth + pad, 3 * lh};
+        lightLine = {x + value * charWidth - pad, 2 * lh, x + (value + (dots ? dots : light ? 4 : 5)) * charWidth + pad, 3 * lh};
     }
 
     dc->SetTarget(bitmap.Get());
@@ -231,16 +231,19 @@ float InfoPanel::Height() const {
 
 // Desenha embaixo dos anéis (a transformação do monitor já está posta): x = borda esquerda da capa da música, y =
 // embaixo das legendas, width = largura do bloco do canto. Clima + JSON são um bitmap refeito só quando o texto muda
-// (1x por segundo, pelo relógio); por quadro é um DrawBitmap por monitor. Com o mouse em cima do valor da luz, ele
-// ganha um fundo claro arredondado; o retângulo dele fica guardado para a janela de clique.
+// (1x por segundo, pelo relógio, e a cada pontinho do carregando da luz); por quadro é um DrawBitmap por monitor. Com
+// o mouse em cima do valor da luz, ele ganha um fundo claro arredondado; o retângulo dele fica guardado para a janela
+// de clique.
 void InfoPanel::Draw(ID2D1DeviceContext* screen, float x, float y, float width, bool lightHovered) {
     if (!dc) Create(screen);
 
     SYSTEMTIME now;
     GetLocalTime(&now);
-    if (now.wSecond != second || bitmapWidth != int(width)) {
+    int dots = LightPending() ? int(GetTickCount64() / 350 % 3) + 1 : 0;
+    if (now.wSecond != second || bitmapWidth != int(width) || dots != lastDots) {
         second = now.wSecond;
-        Render(now, int(width));
+        lastDots = dots;
+        Render(now, int(width), dots);
     }
     if (!bitmap) return;
 

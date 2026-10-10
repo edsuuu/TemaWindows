@@ -32,6 +32,7 @@ private:
     int bitmapWidth = 0;
     int bitmapHeight = 0;
     int second = -1;
+    int lastDots = 0;
     int weatherVersion = -1;
     float scale = 1;
     float charWidth = 0;
@@ -39,7 +40,7 @@ private:
     D2D1_RECT_F lightRect{};
 
     void Create(ID2D1DeviceContext* screen);
-    void Render(SYSTEMTIME const& now, int width);
+    void Render(SYSTEMTIME const& now, int width, int dots);
     void DrawWeatherColumn(float center, float halfWidth, float top, std::wstring const& temperature, std::wstring const& sky,
                            std::wstring const& range);
     void PaintText(std::wstring const& text, IDWriteTextFormat* font, D2D1_RECT_F const& box, float gray, float alpha);
