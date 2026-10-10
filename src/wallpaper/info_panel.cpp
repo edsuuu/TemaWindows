@@ -77,7 +77,7 @@ static JsonText BuildJson(PcSpecs const& specs, std::vector<std::wstring> const&
                                           now.wSecond)));
     if (light >= 0) {
         add(L"  ", 0);
-        add(L"\"bedroom_light\"", 1);
+        add(L"\"luz_acesa\"", 1);
         add(L": ", 0);
         add(light ? L"true" : L"false", light ? 4 : 5);
         add(L",\n", 0);
