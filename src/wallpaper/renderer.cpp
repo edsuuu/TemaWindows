@@ -322,9 +322,10 @@ void Wallpaper::DrawOverlay(Surface const& surface, Monitors const& monitors, Bl
     for (int i = 0; i < int(monitors.corners.size()); i++) {
         auto const& corner = monitors.corners[i];
         dc->SetTransform(corner);
-        if (a > 0) card.Draw(dc, g.brush.Get(), l, equalizer, a, HoveredMediaButton(i), PressedMediaButton(i));
+        if (a > 0) card.Draw(dc, g.brush.Get(), l, equalizer, a, HoveredMediaButton(i), PressedMediaButton(i), ZoneHovered(Zone::Title, i),
+                             ZoneHovered(Zone::Artist, i));
         rings.Draw(dc, g.brush.Get(), g.round.Get(), corner, l, block.ringsY);
-        panel.Draw(dc, l.cardLeft, block.ringsY + l.ringRadius + 22 * l.scale, l.right - l.cardLeft, LightHovered(i));
+        panel.Draw(dc, l.cardLeft, block.ringsY + l.ringRadius + 22 * l.scale, l.right - l.cardLeft, ZoneHovered(Zone::Light, i));
     }
 
     dc->SetTransform(D2D1::Matrix3x2F::Identity());
@@ -343,11 +344,15 @@ static std::vector<RECT> PerMonitor(HWND parent, Monitors const& monitors, D2D1_
     return rects;
 }
 
-// Janelas que pegam o clique, uma por monitor: sobre os três botões do cartão (com o cartão aparecendo) e sobre o
-// valor da luz no JSON (com a luz lá). Só com o fundo visível.
+// Janelas que pegam o clique, uma por monitor: sobre os botões, o nome da música e o do artista no cartão (com o
+// cartão aparecendo) e sobre o valor da luz no JSON (com a luz lá). Só com o fundo visível.
 void Wallpaper::UpdateButtons(HWND parent, Monitors const& monitors, bool hidden) {
-    D2D1_RECT_F first = MediaButtonRect(monitors.layout, 0), last = MediaButtonRect(monitors.layout, 2), light = panel.LightRect();
-    PlaceClickZones(Zone::Media, PerMonitor(parent, monitors, {first.left, first.top, last.right, last.bottom}), card.alpha > 0.5f && !hidden);
+    D2D1_RECT_F first = MediaButtonRect(monitors.layout, 0), last = MediaButtonRect(monitors.layout, kMediaButtons - 1), light = panel.LightRect();
+    D2D1_RECT_F title = card.TitleRect(monitors.layout), artist = card.ArtistRect(monitors.layout);
+    bool cardShown = card.alpha > 0.5f && !hidden;
+    PlaceClickZones(Zone::Media, PerMonitor(parent, monitors, {first.left, first.top, last.right, last.bottom}), cardShown);
+    PlaceClickZones(Zone::Title, PerMonitor(parent, monitors, title), cardShown && title.right > title.left);
+    PlaceClickZones(Zone::Artist, PerMonitor(parent, monitors, artist), cardShown && artist.right > artist.left);
     PlaceClickZones(Zone::Light, PerMonitor(parent, monitors, light), light.right > light.left && !hidden);
 }
 

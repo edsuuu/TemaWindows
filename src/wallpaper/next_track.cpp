@@ -32,6 +32,8 @@ struct AccessToken {
 
 static std::mutex g_mutex;
 static NextTrack g_next;
+static std::mutex g_tokenMutex;
+static AccessToken g_token;
 
 // Lado da capa da próxima música na tela, em pixels (26 DIPs).
 int NextCoverSize() {
@@ -96,6 +98,25 @@ static bool RenewToken(AccessToken& token) {
     return true;
 }
 
+// GET na API do Spotify (api.spotify.com) com o access token, renovado quando vence; "" sem login ou se falhar. O token
+// é um só para a fila e o clique no cartão: cada renovação troca o refresh token.
+static std::string SpotifyGet(std::wstring const& path) {
+    std::string token;
+    {
+        std::lock_guard lock(g_tokenMutex);
+        if (Now() >= g_token.expires && !RenewToken(g_token)) return "";
+        token = g_token.value;
+    }
+
+    std::wstring authorization = L"Authorization: Bearer " + std::wstring(winrt::to_hstring(token));
+    std::string response = HttpsRequest(L"api.spotify.com", path, L"GET", authorization);
+    if (response.empty()) {
+        std::lock_guard lock(g_tokenMutex);
+        g_token.expires = 0;
+    }
+    return response;
+}
+
 // Artistas separados por vírgula (música) ou o nome do programa (episódio de podcast).
 static std::wstring ArtistsOf(JsonObject const& item) {
     if (!item.HasKey(L"artists")) return item.HasKey(L"show") ? std::wstring(item.GetNamedObject(L"show").GetNamedString(L"name")) : L"";
@@ -136,15 +157,9 @@ static std::shared_ptr<std::vector<BYTE>> DownloadCover(std::wstring const& url)
 }
 
 // Lê a fila (GET /me/player/queue) e devolve a primeira música dela, com a música atual que o Spotify informou.
-static NextTrack FetchNext(AccessToken& token) {
-    if (Now() >= token.expires && !RenewToken(token)) return {};
-
-    std::wstring authorization = L"Authorization: Bearer " + std::wstring(winrt::to_hstring(token.value));
-    std::string response = HttpsRequest(L"api.spotify.com", L"/v1/me/player/queue", L"GET", authorization);
-    if (response.empty()) {
-        token.expires = 0;
-        return {};
-    }
+static NextTrack FetchNext() {
+    std::string response = SpotifyGet(L"/v1/me/player/queue");
+    if (response.empty()) return {};
 
     auto json = JsonObject::Parse(winrt::to_hstring(response));
     auto queue = json.GetNamedArray(L"queue");
@@ -163,7 +178,6 @@ static NextTrack FetchNext(AccessToken& token) {
 // atualiza a fila um pouco depois) e a cada 30 s tocando, para pegar música adicionada na fila.
 static void NextTrackLoop() {
     winrt::init_apartment();
-    AccessToken token;
     std::wstring fetchedFor;
     double lastFetch = -kQueueRefresh;
 
@@ -177,7 +191,7 @@ static void NextTrackLoop() {
         lastFetch = Now();
 
         NextTrack next;
-        try { next = FetchNext(token); } catch (...) {}
+        try { next = FetchNext(); } catch (...) {}
         std::lock_guard lock(g_mutex);
         g_next = next;
     }
@@ -186,6 +200,32 @@ static void NextTrackLoop() {
 // Começa a acompanhar a fila do Spotify numa thread à parte.
 void StartNextTrackService() {
     std::thread(NextTrackLoop).detach();
+}
+
+// Abre no app do Spotify a música que está tocando ou, com `artist`, a página do artista. Com login, pelo link exato
+// (GET /me/player/currently-playing); sem login (ou se falhar), pela busca com o nome. O clique foi no fundo, então o
+// FundoVivo libera o Spotify para vir para a frente.
+void OpenInSpotify(bool artist) {
+    std::thread([artist] {
+        winrt::init_apartment();
+        NowPlaying song = CurrentMedia();
+        std::wstring uri;
+        try {
+            bool logged = GetFileAttributesW(TokenPath().c_str()) != INVALID_FILE_ATTRIBUTES;
+            std::string response = logged ? SpotifyGet(L"/v1/me/player/currently-playing") : "";
+            if (!response.empty()) {
+                auto item = JsonObject::Parse(winrt::to_hstring(response)).GetNamedObject(L"item");
+                uri = artist ? item.GetNamedArray(L"artists").GetObjectAt(0).GetNamedString(L"uri") : item.GetNamedString(L"uri");
+            }
+        } catch (...) {}
+
+        if (uri.empty()) {
+            std::wstring text = artist ? song.artist : song.title + L" " + song.artist;
+            uri = L"spotify:search:" + std::wstring(winrt::to_hstring(FormEncode(winrt::to_string(text))));
+        }
+        AllowSetForegroundWindow(ASFW_ANY);
+        ShellExecuteW(nullptr, nullptr, uri.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    }).detach();
 }
 
 // Última próxima música lida (vazia sem login ou sem fila).

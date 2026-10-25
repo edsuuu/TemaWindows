@@ -46,11 +46,29 @@ static ComPtr<IDWriteTextFormat> TrimmedFont(IDWriteFactory* dwrite, const wchar
     return font;
 }
 
-// Botão do cartão (0 voltar, 1 tocar/pausar, 2 avançar): quadrados de 30 DIPs na linha do título, colados na borda
-// direita.
+// Botão do cartão (0 aleatória, 1 voltar, 2 tocar/pausar, 3 avançar): quadrados de 30 DIPs na linha do título, colados
+// na borda direita.
 D2D1_RECT_F MediaButtonRect(CornerLayout const& layout, int button) {
-    const float s = layout.scale, size = kMediaButton * s, top = roundf(layout.top + 2 * s) - 2 * s, left = layout.right - (3 - button) * size;
+    const float s = layout.scale, size = kMediaButton * s, top = roundf(layout.top + 2 * s) - 2 * s;
+    const float left = layout.right - (kMediaButtons - button) * size;
     return {left, top, left + size, top + size};
+}
+
+// Largura que o título pode ocupar: até os botões.
+float NowPlayingCard::TitleMax(CornerLayout const& layout) const {
+    return layout.right - layout.textLeft - (kMediaButtons * kMediaButton + 6) * layout.scale;
+}
+
+// Onde o nome da música aparece (até onde vai o texto), para o clique e o hover.
+D2D1_RECT_F NowPlayingCard::TitleRect(CornerLayout const& layout) const {
+    const float s = layout.scale, top = roundf(layout.top + 2 * s);
+    return {layout.textLeft, top, layout.textLeft + std::min(titleWidth, TitleMax(layout)), top + 26 * s};
+}
+
+// Onde o nome do artista aparece, para o clique e o hover.
+D2D1_RECT_F NowPlayingCard::ArtistRect(CornerLayout const& layout) const {
+    const float s = layout.scale, top = roundf(layout.top + 2 * s) + 28 * s;
+    return {layout.textLeft, top, layout.textLeft + std::min(artistWidth, artistMax), top + 20 * s};
 }
 
 // Fontes do título, do artista e dos ícones dos botões.
@@ -176,6 +194,7 @@ void NowPlayingCard::Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowP
                             float dt) {
     bool changed = song.title != title || song.artist != artist;
     playing = song.playing;
+    shuffle = song.shuffle;
     position = song.position;
     readAt = song.readAt;
     if (song.duration != duration) {
@@ -217,21 +236,24 @@ void NowPlayingCard::Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowP
     CreateFades(dc);
 }
 
-// Botões ⏮ ⏯ ⏭ (ícones da Segoe Fluent Icons): o que está sob o mouse ganha um fundo claro arredondado, mais claro
-// enquanto apertado. O do meio mostra pausa tocando e play pausado.
+// Botões aleatória ⏮ ⏯ ⏭ (ícones da Segoe Fluent Icons): o que está sob o mouse ganha um fundo claro arredondado, mais
+// claro enquanto apertado. O de tocar mostra pausa tocando e play pausado. O da aleatória fica apagado desligado e,
+// ligado, aceso com um ponto embaixo (como no Spotify).
 void NowPlayingCard::DrawButtons(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility, int hovered,
                                  int pressed) {
-    const wchar_t* glyphs[3] = {L"\xE892", playing ? L"\xE769" : L"\xE768", L"\xE893"};
+    const wchar_t* glyphs[kMediaButtons] = {L"\xE8B1", L"\xE892", playing ? L"\xE769" : L"\xE768", L"\xE893"};
+    const float s = layout.scale;
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < kMediaButtons; i++) {
         D2D1_RECT_F box = MediaButtonRect(layout, i);
         if (i == hovered) {
-            D2D1_ROUNDED_RECT plate{box, 6 * layout.scale, 6 * layout.scale};
+            D2D1_ROUNDED_RECT plate{box, 6 * s, 6 * s};
             brush->SetColor({1, 1, 1, (i == pressed ? 0.16f : 0.09f) * visibility});
             dc->FillRoundedRectangle(plate, brush);
         }
-        brush->SetColor({0.92f, 0.92f, 0.92f, 0.95f * visibility});
+        brush->SetColor({0.92f, 0.92f, 0.92f, (i == 0 && !shuffle ? 0.4f : 0.95f) * visibility});
         dc->DrawText(glyphs[i], 1, iconFont.Get(), box, brush);
+        if (i == 0 && shuffle) dc->FillEllipse({{(box.left + box.right) / 2, box.bottom - 3.5f * s}, 1.5f * s, 1.5f * s}, brush);
     }
 }
 
@@ -265,14 +287,17 @@ void NowPlayingCard::DrawProgress(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* 
 // Cartão de largura fixa no canto: capa à esquerda (cantos levemente arredondados; enquanto não chega, um quadrado bem
 // apagado no lugar), título (~#F2F2F2) e artista (~#C8C8C8) colados nela até a borda direita, os botões na linha do
 // título, a barra de progresso na do artista e o equalizador na base da capa, de ponta a ponta, com graves à esquerda
-// e agudos à direita. A barra que chega perto do teto vai ficando vermelho bem suave (~#F29191 no teto).
+// e agudos à direita. A barra que chega perto do teto vai ficando vermelho bem suave (~#F29191 no teto). Nome da música
+// e do artista ficam sublinhados com o mouse em cima (o clique abre no Spotify).
 void NowPlayingCard::Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, Equalizer const& equalizer,
-                          float visibility, int hovered, int pressed) {
+                          float visibility, int hovered, int pressed, bool titleHovered, bool artistHovered) {
     const float s = layout.scale, top = roundf(layout.top + 2 * s), size = float(CoverSize());
     const float left = layout.textLeft, width = layout.right - layout.textLeft;
 
+    if (titleLayout) titleLayout->SetUnderline(titleHovered, {0, UINT32(title.size())});
+    if (artistLayout) artistLayout->SetUnderline(artistHovered, {0, UINT32(artist.size())});
     brush->SetColor({0.95f, 0.95f, 0.95f, 0.97f * visibility});
-    DrawMarquee(dc, brush, titleLayout.Get(), titleWidth, {left, top - 2 * s}, width - (3 * kMediaButton + 6) * s, 30 * s, s, titleSince);
+    DrawMarquee(dc, brush, titleLayout.Get(), titleWidth, {left, top - 2 * s}, TitleMax(layout), 30 * s, s, titleSince);
     brush->SetColor({0.78f, 0.78f, 0.78f, 0.95f * visibility});
     DrawMarquee(dc, brush, artistLayout.Get(), artistWidth, {left, top + 28 * s}, artistMax, 22 * s, s, titleSince);
     DrawButtons(dc, brush, layout, visibility, hovered, pressed);

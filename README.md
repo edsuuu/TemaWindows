@@ -37,8 +37,11 @@ Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin
   equalizador, anéis de CPU/RAM/GPU/rede com temperaturas (HWiNFO e NVML), clima e um JSON com uptime, data e hora,
   specs e monitores. Pausa com jogo, tela cheia ou tela bloqueada (o overlay do UnkvoidClips não conta). Põe o ícone
   com degradê nas pastas da área de trabalho, inclusive nas novas (`Pastas` = 0 desliga; pula repositórios git).
-  Botões ⏮ ⏯ ⏭ clicáveis no cartão da música: o clique cai em janelas invisíveis (em camada, alfa 1) filhas do
-  Progman, acima dos ícones, e vira comando nos controles de mídia do Windows (sem hook de mouse).
+  Botões aleatória ⏮ ⏯ ⏭ clicáveis no cartão da música: o clique cai em janelas invisíveis (em camada, alfa 1)
+  filhas do Progman, acima dos ícones, e vira comando nos controles de mídia do Windows (sem hook de mouse). A
+  aleatória só liga/desliga (a ordem inteligente do Spotify não passa pelos controles do Windows nem pela API). Nome da
+  música e do artista sublinham no hover e, no clique, abrem a música ou o artista no Spotify (link exato com o login
+  do Spotify feito; sem ele, pela busca).
 - **TemaContexto** — põe no menu novo do clique direito os itens que só apareciam em "Mostrar mais opções" (Git,
   Visual Studio, PhpStorm, 7-Zip, NVIDIA e o que for instalado depois) e o item "Abrir WSL" (Terminal com o PowerShell
   padrão já no WSL, na home). Lê os verbos (`shell\`) e as extensões de menu (`shellex\ContextMenuHandlers`) de

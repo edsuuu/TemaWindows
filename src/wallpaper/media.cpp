@@ -125,7 +125,10 @@ static NowPlaying ReadSpotify(GlobalSystemMediaTransportControlsSessionManager c
     for (auto session : manager.GetSessions()) {
         if (std::wstring_view(session.SourceAppUserModelId()).find(L"Spotify") == std::wstring_view::npos) continue;
 
-        song.playing = session.GetPlaybackInfo().PlaybackStatus() == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
+        auto playback = session.GetPlaybackInfo();
+        auto shuffle = playback.IsShuffleActive();
+        song.playing = playback.PlaybackStatus() == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
+        song.shuffle = shuffle && shuffle.Value();
         auto properties = session.TryGetMediaPropertiesAsync().get();
         song.title = properties.Title();
         song.artist = properties.Artist();
@@ -170,24 +173,29 @@ void StartMediaWatcher() {
     std::thread(MediaLoop).detach();
 }
 
-// Comando para a sessão do Spotify pelos controles de mídia do Windows (0 voltar, 1 tocar/pausar, 2 avançar), numa
-// thread à parte. Tocar/pausar troca o ícone na hora, sem esperar a próxima leitura.
+// Comando para a sessão do Spotify pelos controles de mídia do Windows (0 aleatória liga/desliga, 1 voltar, 2
+// tocar/pausar, 3 avançar), numa thread à parte. Aleatória e tocar/pausar trocam o ícone na hora, sem esperar a
+// próxima leitura. A ordem inteligente do Spotify não passa pelos controles do Windows (nem pela API dele).
 void SendMediaCommand(int button) {
-    if (button == 1) {
+    bool shuffle;
+    {
         std::lock_guard lock(g_mutex);
-        g_nowPlaying.playing = !g_nowPlaying.playing;
+        if (button == 0) g_nowPlaying.shuffle = !g_nowPlaying.shuffle;
+        if (button == 2) g_nowPlaying.playing = !g_nowPlaying.playing;
+        shuffle = g_nowPlaying.shuffle;
     }
 
-    std::thread([button] {
+    std::thread([button, shuffle] {
         try {
             winrt::init_apartment();
             auto manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();
             for (auto session : manager.GetSessions()) {
                 if (std::wstring_view(session.SourceAppUserModelId()).find(L"Spotify") == std::wstring_view::npos) continue;
 
-                if (button == 0) session.TrySkipPreviousAsync().get();
-                if (button == 1) session.TryTogglePlayPauseAsync().get();
-                if (button == 2) session.TrySkipNextAsync().get();
+                if (button == 0) session.TryChangeShuffleActiveAsync(shuffle).get();
+                if (button == 1) session.TrySkipPreviousAsync().get();
+                if (button == 2) session.TryTogglePlayPauseAsync().get();
+                if (button == 3) session.TrySkipNextAsync().get();
                 break;
             }
         } catch (...) {}

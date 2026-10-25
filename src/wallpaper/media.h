@@ -5,10 +5,13 @@
 #include <string>
 #include <vector>
 
+constexpr int kMediaButtons = 4;
+
 struct NowPlaying {
     std::wstring title;
     std::wstring artist;
     bool playing = false;
+    bool shuffle = false;
     bool elsewhere = false;
     std::shared_ptr<std::vector<BYTE>> cover;
     double position = 0;

@@ -15,3 +15,4 @@ struct NextTrack {
 int NextCoverSize();
 void StartNextTrackService();
 NextTrack CurrentNextTrack();
+void OpenInSpotify(bool artist);

@@ -32,7 +32,9 @@ struct NowPlayingCard {
                 float dt);
     float NextRowHeight(float scale) const;
     void Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, Equalizer const& equalizer, float visibility,
-              int hovered, int pressed);
+              int hovered, int pressed, bool titleHovered, bool artistHovered);
+    D2D1_RECT_F TitleRect(CornerLayout const& layout) const;
+    D2D1_RECT_F ArtistRect(CornerLayout const& layout) const;
 
 private:
     ComPtr<IDWriteTextFormat> titleFont;
@@ -71,7 +73,9 @@ private:
     double duration = 0;
     double readAt = 0;
     bool playing = false;
+    bool shuffle = false;
 
+    float TitleMax(CornerLayout const& layout) const;
     void DrawButtons(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility, int hovered,
                      int pressed);
     void DrawProgress(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility);

@@ -1,18 +1,19 @@
 #include "wallpaper/click_zones.h"
 #include "wallpaper/light_switch.h"
 #include "wallpaper/media.h"
+#include "wallpaper/next_track.h"
 
 #include <windowsx.h>
 #include <algorithm>
 #include <atomic>
 
-static std::vector<HWND> g_windows[2];
+static std::vector<HWND> g_windows[4];
 static std::atomic<int> g_hovered{-1};
 static std::atomic<int> g_pressed{-1};
 
-// Onde o ponto cai: na zona dos botões da música, o botão (0 voltar, 1 tocar/pausar, 2 avançar) somado a 3 x o
-// monitor; na da luz, o monitor. -1 fora da janela. A zona vai em cima (zona x 100) para hover e clique não se
-// confundirem entre as duas.
+// Onde o ponto cai: na zona dos botões da música, o botão (0 aleatória, 1 voltar, 2 tocar/pausar, 3 avançar) somado a
+// 4 x o monitor; nas outras (luz, nome da música, artista), o monitor. -1 fora da janela. A zona vai em cima (zona x
+// 100) para hover e clique não se confundirem entre elas.
 static int TargetAt(HWND window, LPARAM point) {
     RECT client;
     GetClientRect(window, &client);
@@ -20,14 +21,19 @@ static int TargetAt(HWND window, LPARAM point) {
     if (!PtInRect(&client, p) || client.right <= 0) return -1;
 
     int data = int(GetWindowLongPtrW(window, GWLP_USERDATA)), zone = data / 16, monitor = data % 16;
-    return zone * 100 + (zone == int(Zone::Media) ? monitor * 3 + std::clamp(int(p.x * 3 / client.right), 0, 2) : monitor);
+    if (zone != int(Zone::Media)) return zone * 100 + monitor;
+    return monitor * kMediaButtons + std::clamp(int(p.x * kMediaButtons / client.right), 0, kMediaButtons - 1);
 }
 
-// Clique completo (apertar e soltar no mesmo alvo): botão da música vira comando para o Spotify; o valor da luz liga
-// ou desliga o interruptor.
+// Clique completo (apertar e soltar no mesmo alvo): botão da música vira comando para o Spotify, o valor da luz liga
+// ou desliga o interruptor, e o nome da música ou do artista abre ele no Spotify.
 static void Activate(int target) {
-    if (target / 100 == int(Zone::Media)) SendMediaCommand(target % 100 % 3);
-    else ToggleLight();
+    switch (Zone(target / 100)) {
+    case Zone::Media: SendMediaCommand(target % kMediaButtons); break;
+    case Zone::Light: ToggleLight(); break;
+    case Zone::Title: OpenInSpotify(false); break;
+    case Zone::Artist: OpenInSpotify(true); break;
+    }
 }
 
 // Mouse nas janelas de clique: hover, e apertar e soltar em cima do mesmo alvo ativa. Não ativa o Progman, para não
@@ -101,19 +107,19 @@ void PlaceClickZones(Zone zone, std::vector<RECT> const& rects, bool visible) {
     }
 }
 
-// Botão da música com o mouse em cima neste monitor (0 a 2), ou -1.
+// Botão da música com o mouse em cima neste monitor (0 a 3), ou -1.
 int HoveredMediaButton(int monitor) {
     int hovered = g_hovered;
-    return hovered >= 0 && hovered / 100 == int(Zone::Media) && hovered % 100 / 3 == monitor ? hovered % 100 % 3 : -1;
+    return hovered >= 0 && hovered / 100 == int(Zone::Media) && hovered % 100 / kMediaButtons == monitor ? hovered % kMediaButtons : -1;
 }
 
-// Botão da música apertado neste monitor (0 a 2), ou -1.
+// Botão da música apertado neste monitor (0 a 3), ou -1.
 int PressedMediaButton(int monitor) {
     int pressed = g_pressed;
-    return pressed >= 0 && pressed / 100 == int(Zone::Media) && pressed % 100 / 3 == monitor ? pressed % 100 % 3 : -1;
+    return pressed >= 0 && pressed / 100 == int(Zone::Media) && pressed % 100 / kMediaButtons == monitor ? pressed % kMediaButtons : -1;
 }
 
-// O mouse está em cima do valor da luz neste monitor?
-bool LightHovered(int monitor) {
-    return g_hovered == int(Zone::Light) * 100 + monitor;
+// O mouse está em cima da zona (luz, nome da música ou artista) neste monitor?
+bool ZoneHovered(Zone zone, int monitor) {
+    return g_hovered == int(zone) * 100 + monitor;
 }
