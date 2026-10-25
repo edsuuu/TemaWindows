@@ -45,13 +45,15 @@ Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin
 - **TemaContexto** — põe no menu novo do clique direito os itens que só apareciam em "Mostrar mais opções" (Git,
   Visual Studio, PhpStorm, 7-Zip, NVIDIA e o que for instalado depois) e o item "Abrir WSL" (Terminal com o PowerShell
   padrão já no WSL, na home). Lê os verbos (`shell\`) e as extensões de menu (`shellex\ContextMenuHandlers`) de
-  terceiros no registro, pulando o que é do Windows. O menu novo só aceita itens de pacote e junta num submenu os de um
-  mesmo pacote, então são 11 pacotes com local externo (10 posições + Abrir WSL), sem assinatura (precisa do Modo
-  Desenvolvedor). Cada pacote roda num dllhost próprio: o primeiro monta a lista e os outros leem de
-  `cache\contexto\lista.txt`. A extensão da NVIDIA não carrega fora do Explorer, então o item dela abre o app direto.
-  No "Mostrar mais opções" os itens aparecem duas vezes (o original e o do pacote).
+  terceiros no registro, pulando o que é do Windows. O menu novo só aceita itens de pacote e junta num submenu os de
+  pacotes com o mesmo nome, então são 11 pacotes com local externo e nome próprio (10 posições + Abrir WSL), sem
+  assinatura (precisa do Modo Desenvolvedor). Cada pacote roda num dllhost próprio, que o vigia
+  (`rundll32 TemaContexto.dll,Run`, no `HKCU\...\Run`) deixa aberto; sem isso o menu mostra "Carregando" e encolhe. Só
+  a posição 0 pergunta a seleção ao Explorer e monta a lista; as outras leem de `cache\contexto\lista.txt`. A extensão
+  da NVIDIA não carrega fora do Explorer, então o item dela abre o app direto. No "Mostrar mais opções" os itens
+  aparecem duas vezes (o original e o do pacote).
 
-Autostart: `HKCU\...\Run` (`TemaBarra`, `TemaMenus`, `TemaJanelas`, via `rundll32 bin\<dll>,Run`) e `HKLM\...\Run`
+Autostart: `HKCU\...\Run` (`TemaBarra`, `TemaMenus`, `TemaJanelas`, `TemaContexto`, via `rundll32 bin\<dll>,Run`) e `HKLM\...\Run`
 (`FundoVivo`, para todos os usuários). Tela de bloqueio: `HKLM\...\PersonalizationCSP` aponta para
 `assets\bloqueio-alga.png`.
 

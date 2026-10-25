@@ -5,6 +5,8 @@
 #include <winrt/base.h>
 #include <shlwapi.h>
 #include <mutex>
+#include <optional>
+#include <sstream>
 
 #pragma comment(linker, "/EXPORT:DllGetClassObject,PRIVATE")
 #pragma comment(linker, "/EXPORT:DllCanUnloadNow,PRIVATE")
@@ -21,9 +23,8 @@ static std::vector<std::shared_ptr<LegacyItem>> g_items;
 static std::wstring g_selectionKey;
 static ULONGLONG g_collectedAt;
 
-// Item do menu antigo na posição `slot` para a seleção. O menu novo pergunta título, ícone e estado de cada posição em
-// seguida, então a lista é montada uma vez e reaproveitada por 2 s para a mesma seleção. Sem `items` (GetFlags,
-// EnumSubCommands), vale a última lista montada.
+// Item do menu antigo na posição `slot` para a seleção, montando a lista se a seleção mudou ou ela tem mais de 2 s. Sem
+// `items`, vale a última lista.
 static std::shared_ptr<LegacyItem> ItemAt(IShellItemArray* items, bool background, int slot) {
     std::lock_guard guard(g_lock);
     if (items) {
@@ -49,6 +50,27 @@ static std::shared_ptr<LegacyItem> ItemAt(IShellItemArray* items, bool backgroun
     return g_items[slot];
 }
 
+// Usa a lista que a posição 0 acabou de montar (menos de 0,5 s, do mesmo tipo: fundo ou itens), da memória ou de
+// cache\contexto\lista.txt. A seleção sai da chave: os caminhos separados por '|'.
+static bool UseRecentList(bool background) {
+    std::lock_guard guard(g_lock);
+    if (g_selection.background == background && GetTickCount64() - g_collectedAt < 500) return true;
+
+    std::vector<std::shared_ptr<LegacyItem>> items;
+    ULONGLONG written = 0;
+    std::wstring key = RecentLegacyItems(500, items, written);
+    if (key.rfind(background ? L"fundo|" : L"itens|", 0) != 0) return false;
+
+    Selection selection{background};
+    std::wistringstream paths(key.substr(6));
+    for (std::wstring path; std::getline(paths, path, L'|');) selection.paths.push_back(path);
+    g_items = std::move(items);
+    g_selection = std::move(selection);
+    g_selectionKey = key;
+    g_collectedAt = written;
+    return true;
+}
+
 // Seleção da última lista montada, para rodar o item clicado.
 static Selection CurrentSelection() {
     std::lock_guard guard(g_lock);
@@ -70,16 +92,58 @@ static std::shared_ptr<LegacyItem> WslItem() {
     return item;
 }
 
-struct LegacyCommand : winrt::implements<LegacyCommand, IExplorerCommand> {
+struct LegacyCommand : winrt::implements<LegacyCommand, IExplorerCommand, IObjectWithSite> {
     bool background;
     int slot;
     std::shared_ptr<LegacyItem> fixed;
+    winrt::com_ptr<IUnknown> site;
+    std::optional<std::shared_ptr<LegacyItem>> cached;
 
     LegacyCommand(bool background, int slot, std::shared_ptr<LegacyItem> fixed) : background(background), slot(slot), fixed(std::move(fixed)) {}
 
-    // O item desta posição: fixo (submenu, Abrir WSL) ou o da lista da seleção.
-    std::shared_ptr<LegacyItem> Item(IShellItemArray* items) {
-        return fixed ? fixed : ItemAt(items, background, slot);
+    // Pasta aberta na janela, pelo site que o Explorer passa (como no "Abrir no Terminal"): no fundo de pasta o menu
+    // novo não manda seleção.
+    winrt::com_ptr<IShellItemArray> SiteFolder() {
+        winrt::com_ptr<IFolderView> view;
+        winrt::com_ptr<IShellItem> folder;
+        winrt::com_ptr<IShellItemArray> array;
+        auto provider = site.try_as<IServiceProvider>();
+        if (provider && SUCCEEDED(provider->QueryService(__uuidof(IFolderView), IID_PPV_ARGS(view.put()))) &&
+            SUCCEEDED(view->GetFolder(IID_PPV_ARGS(folder.put())))) {
+            SHCreateShellItemArrayFromShellItem(folder.get(), IID_PPV_ARGS(array.put()));
+        }
+        return array;
+    }
+
+    // O item desta posição: fixo (submenu, Abrir WSL) ou o da lista da seleção. Ler a seleção (ou a pasta, no fundo) é
+    // chamada ao Explorer, de 12 a 20 ms cada: somado nas 10 posições, o menu mostrava "Carregando" e depois encolhia.
+    // Então só a posição 0, que o menu chama primeiro, lê e monta a lista; as outras pegam a dela, e cada comando (um
+    // por menu aberto) guarda o seu item. Ao clicar, sempre lê.
+    std::shared_ptr<LegacyItem> Item(IShellItemArray* items, bool invoking = false) {
+        if (fixed) return fixed;
+        if (cached && !invoking) return *cached;
+
+        if (slot > 0 && !invoking && UseRecentList(background)) {
+            cached = ItemAt(nullptr, background, slot);
+        } else {
+            winrt::com_ptr<IShellItemArray> folder;
+            if (!items && background) {
+                folder = SiteFolder();
+                items = folder.get();
+            }
+            cached = ItemAt(items, background, slot);
+        }
+        return *cached;
+    }
+
+    IFACEMETHODIMP SetSite(IUnknown* value) override {
+        site.copy_from(value);
+        return S_OK;
+    }
+
+    IFACEMETHODIMP GetSite(REFIID iid, void** object) override {
+        *object = nullptr;
+        return site ? site->QueryInterface(iid, object) : E_FAIL;
     }
 
     IFACEMETHODIMP GetTitle(IShellItemArray* items, LPWSTR* name) override {
@@ -108,7 +172,7 @@ struct LegacyCommand : winrt::implements<LegacyCommand, IExplorerCommand> {
     }
 
     IFACEMETHODIMP Invoke(IShellItemArray* items, IBindCtx*) override {
-        auto item = Item(items);
+        auto item = Item(items, true);
         if (item && item->children.empty()) InvokeLegacyItem(CurrentSelection(), *item);
         return S_OK;
     }
@@ -207,4 +271,31 @@ STDAPI DllGetClassObject(REFCLSID clsid, REFIID iid, void** object) {
 // Fica carregada até o Explorer reiniciar: a lista e as extensões criadas vivem na DLL.
 STDAPI DllCanUnloadNow() {
     return S_FALSE;
+}
+
+// rundll32 TemaContexto.dll,Run: segura uma instância de cada classe para os dllhost dos pacotes ficarem abertos. Sem
+// isso cada pacote abre o seu no clique, e enquanto abrem o menu novo mostra "Carregando" e depois encolhe. A cada 5 s
+// recria a que caiu (recarga, por exemplo).
+extern "C" __declspec(dllexport) void CALLBACK Run(HWND, HINSTANCE, LPSTR, int) {
+    CreateMutexW(nullptr, TRUE, L"TemaContextoRun");
+    if (GetLastError() == ERROR_ALREADY_EXISTS) return;
+    winrt::init_apartment();
+
+    std::vector<std::pair<GUID, winrt::com_ptr<IExplorerCommand>>> held;
+    for (BYTE code = 0; code <= kWsl; ++code) {
+        if ((code & 0x0F) >= kSlotCount || (code > kItemSlots + 0x0F && code != kWsl)) continue;
+        GUID clsid = kBaseClsid;
+        clsid.Data4[7] = code;
+        held.emplace_back(clsid, nullptr);
+    }
+
+    for (;;) {
+        for (auto& [clsid, command] : held) {
+            GUID name;
+            if (command && command->GetCanonicalName(&name) == E_NOTIMPL) continue;
+            command = nullptr;
+            CoCreateInstance(clsid, nullptr, CLSCTX_LOCAL_SERVER, IID_PPV_ARGS(command.put()));
+        }
+        Sleep(5000);
+    }
 }

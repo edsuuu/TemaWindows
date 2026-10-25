@@ -73,6 +73,37 @@ static void WriteText(std::wstring const& path, std::wstring const& text) {
     fclose(file);
 }
 
+// cache\contexto\lista.txt: chave da seleção na 1ª linha, GetTickCount64 de quando foi montada na 2ª e os itens depois.
+// Devolve a chave (vazia sem arquivo); `written` e `items` ficam com o resto.
+static std::wstring ReadList(std::wstring const& path, ULONGLONG& written, std::wstring& items) {
+    std::wstring text = ReadText(path);
+    size_t first = text.find(L'\n'), second = first == std::wstring::npos ? first : text.find(L'\n', first + 1);
+    if (second == std::wstring::npos) return {};
+
+    written = _wcstoui64(text.c_str() + first + 1, nullptr, 10);
+    items = text.substr(second + 1);
+    return text.substr(0, first);
+}
+
+// Última lista gravada, se tiver menos de `maxAge` ms, de qualquer seleção: devolve a chave dela (vazia se não houver).
+std::wstring RecentLegacyItems(ULONGLONG maxAge, std::vector<std::shared_ptr<LegacyItem>>& items, ULONGLONG& written) {
+    HANDLE mutex = CreateMutexW(nullptr, FALSE, L"Local\\TemaContextoLista");
+    if (mutex) WaitForSingleObject(mutex, 10000);
+
+    std::wstring text, key = ReadList(ProjectPath(L"cache\\contexto\\lista.txt"), written, text);
+    if (!key.empty() && GetTickCount64() - written < maxAge) {
+        items = ParseItems(text);
+    } else {
+        key.clear();
+    }
+
+    if (mutex) {
+        ReleaseMutex(mutex);
+        CloseHandle(mutex);
+    }
+    return key;
+}
+
 // Lista de itens da seleção, dividida entre os processos: cada posição do menu roda num dllhost próprio (um por pacote),
 // então o primeiro monta a lista e grava em cache\contexto\lista.txt, e os outros, se for a mesma seleção e de menos de
 // 2 s atrás, só leem.
@@ -80,15 +111,13 @@ std::vector<std::shared_ptr<LegacyItem>> SharedLegacyItems(Selection const& sele
     HANDLE mutex = CreateMutexW(nullptr, FALSE, L"Local\\TemaContextoLista");
     if (mutex) WaitForSingleObject(mutex, 10000);
 
-    std::wstring folder = ProjectPath(L"cache\\contexto"), path = folder + L"\\lista.txt";
-    std::wstring text = ReadText(path);
-    size_t first = text.find(L'\n'), second = first == std::wstring::npos ? first : text.find(L'\n', first + 1);
-    bool fresh = second != std::wstring::npos && text.compare(0, first, key) == 0 && first == key.size() &&
-                 GetTickCount64() - _wcstoui64(text.c_str() + first + 1, nullptr, 10) < 2000;
+    std::wstring folder = ProjectPath(L"cache\\contexto"), path = folder + L"\\lista.txt", text;
+    ULONGLONG written = 0;
+    bool fresh = ReadList(path, written, text) == key && GetTickCount64() - written < 2000;
 
     std::vector<std::shared_ptr<LegacyItem>> items;
     if (fresh) {
-        items = ParseItems(text.substr(second + 1));
+        items = ParseItems(text);
     } else {
         ULONGLONG started = GetTickCount64();
         Log(L"montando %s", key.c_str());
