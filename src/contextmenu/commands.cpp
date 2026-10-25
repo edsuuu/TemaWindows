@@ -257,6 +257,7 @@ struct CommandFactory : winrt::implements<CommandFactory, IClassFactory> {
 // fundo de pasta, 10-19 arquivos e pastas, 20 Abrir WSL.
 STDAPI DllGetClassObject(REFCLSID clsid, REFIID iid, void** object) {
     *object = nullptr;
+    if (clsid == kMenuTapClsid) return GetMenuTapFactory(iid, object);
     BYTE code = clsid.Data4[7];
     bool known = memcmp(&clsid, &kBaseClsid, sizeof(GUID) - 1) == 0 &&
                  (code == kWsl || (code & 0xF0) <= kItemSlots && (code & 0x0F) < kSlotCount);
@@ -297,6 +298,7 @@ extern "C" __declspec(dllexport) void CALLBACK Run(HWND, HINSTANCE, LPSTR, int) 
             command = nullptr;
             CoCreateInstance(clsid, nullptr, CLSCTX_LOCAL_SERVER, IID_PPV_ARGS(command.put()));
         }
+        InjectMenuTap();
         Sleep(5000);
     }
 }

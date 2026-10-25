@@ -50,8 +50,11 @@ Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin
   assinatura (precisa do Modo Desenvolvedor). Cada pacote roda num dllhost próprio, que o vigia
   (`rundll32 TemaContexto.dll,Run`, no `HKCU\...\Run`) deixa aberto; sem isso o menu mostra "Carregando" e encolhe. Só
   a posição 0 pergunta a seleção ao Explorer e monta a lista; as outras leem de `cache\contexto\lista.txt`. A extensão
-  da NVIDIA não carrega fora do Explorer, então o item dela abre o app direto. No "Mostrar mais opções" os itens
-  aparecem duas vezes (o original e o do pacote).
+  da NVIDIA não carrega fora do Explorer, então o item dela abre o app direto. O próprio "Mostrar mais opções" some do
+  menu: o menu novo é WinUI 3 (não o XAML do sistema que o TemaBarra usa), e o vigia injeta no Explorer um TAP de
+  diagnóstico do WinUI 3 (`menu_tap.cpp`, pelo `Microsoft.Internal.FrameworkUdk.dll`) que esconde o botão
+  `expandtoclassic` e o separador acima dele. O menu antigo continua no Shift + clique direito, com os itens duas
+  vezes (o original e o do pacote). Trocar o TAP pede reiniciar o Explorer (a DLL fica carregada nele).
 
 Autostart: `HKCU\...\Run` (`TemaBarra`, `TemaMenus`, `TemaJanelas`, `TemaContexto`, via `rundll32 bin\<dll>,Run`) e `HKLM\...\Run`
 (`FundoVivo`, para todos os usuários). Tela de bloqueio: `HKLM\...\PersonalizationCSP` aponta para

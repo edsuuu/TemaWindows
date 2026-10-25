@@ -8,7 +8,7 @@ if not exist "%OBJ%" mkdir "%OBJ%"
 
 cl %CFLAGS% /LD /Fo"%OBJ%/" "%SRC%\contextmenu\*.cpp" "%SRC%\common\log.cpp" "%SRC%\common\paths.cpp" ^
    /link /OUT:"%OBJ%\TemaContexto.dll" /IMPLIB:"%OBJ%\TemaContexto.lib" ^
-   windowsapp.lib ole32.lib user32.lib gdi32.lib advapi32.lib shell32.lib shlwapi.lib version.lib || exit /b 1
+   windowsapp.lib ole32.lib oleaut32.lib user32.lib gdi32.lib advapi32.lib shell32.lib shlwapi.lib version.lib || exit /b 1
 
 call "%~dp0publish.bat" "%OBJ%\TemaContexto.dll" || exit /b 1
 call "%~dp0clean.bat"
