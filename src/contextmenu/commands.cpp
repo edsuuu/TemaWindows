@@ -77,8 +77,9 @@ static Selection CurrentSelection() {
     return g_selection;
 }
 
-// "Abrir WSL": Terminal do Windows com o perfil padrão (PowerShell) rodando o WSL já na home. O '~' vai entre aspas
-// simples para o PowerShell não trocar pela home do Windows.
+// "Abrir WSL": Terminal do Windows no perfil do PowerShell 7 (o GUID que o Terminal gera para ele, igual em todo PC)
+// rodando o WSL já na home. Sem o -p, a aba sai com o ícone genérico de console. O '~' vai entre aspas simples para o
+// PowerShell não trocar pela home do Windows.
 static std::shared_ptr<LegacyItem> WslItem() {
     wchar_t system[MAX_PATH], terminal[MAX_PATH];
     GetSystemDirectoryW(system, MAX_PATH);
@@ -88,7 +89,7 @@ static std::shared_ptr<LegacyItem> WslItem() {
     item->title = L"Abrir WSL";
     item->icon = std::wstring(system) + L"\\wsl.exe";
     item->program = terminal;
-    item->arguments = L"pwsh.exe -NoLogo -NoExit -Command \"wsl --cd '~'\"";
+    item->arguments = L"-p {574e775e-4f2a-5b96-ac1e-a2962a402336} pwsh.exe -NoLogo -NoExit -Command \"wsl --cd '~'\"";
     return item;
 }
 
