@@ -11,10 +11,11 @@ src\taskbar\    TemaBarra.dll   (explorer.exe)
 src\menus\      TemaMenus.dll   (StartMenuExperienceHost, SearchHost, ShellHost, ShellExperienceHost)
 src\settings\   TemaJanelas.dll (SystemSettings)
 src\wallpaper\  FundoVivo.exe   (janela filha do WorkerW, atrás dos ícones da área de trabalho)
+src\contextmenu\ TemaContexto.dll (dllhost dos pacotes do menu do clique direito) e o modelo do AppxManifest.xml
 build\          build-<projeto>.bat e build-all.bat (intermediários em build\obj\, apagados no fim)
-bin\            os quatro binários
-assets\         fundo.png (tema golden e papel de parede estático), fundo-morph.bin (tema loop), bloqueio-alga.png, folder.ico (ícone de pasta)
-cache\          cache-clima.txt (última resposta do Open-Meteo)
+bin\            os binários e contexto\ (pacotes gerados do TemaContexto)
+assets\         fundo.png (tema golden e papel de parede estático), fundo-morph.bin (tema loop), bloqueio-alga.png, folder.ico (ícone de pasta), contexto.png (logo dos pacotes)
+cache\          cache-clima.txt (última resposta do Open-Meteo), contexto\ (lista do menu e ícones das extensões)
 logs\           <binário>.log de cada DLL
 tools\          reload-*.ps1, theme.ps1, capture.exe, capture-wallpaper.exe, effects-test.exe, folder-icon.ps1 (gera o folder.ico)
 ```
@@ -38,6 +39,14 @@ Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin
   com degradê nas pastas da área de trabalho, inclusive nas novas (`Pastas` = 0 desliga; pula repositórios git).
   Botões ⏮ ⏯ ⏭ clicáveis no cartão da música: o clique cai em janelas invisíveis (em camada, alfa 1) filhas do
   Progman, acima dos ícones, e vira comando nos controles de mídia do Windows (sem hook de mouse).
+- **TemaContexto** — põe no menu novo do clique direito os itens que só apareciam em "Mostrar mais opções" (Git,
+  Visual Studio, PhpStorm, 7-Zip, NVIDIA e o que for instalado depois) e o item "Abrir WSL" (Terminal com o PowerShell
+  padrão já no WSL, na home). Lê os verbos (`shell\`) e as extensões de menu (`shellex\ContextMenuHandlers`) de
+  terceiros no registro, pulando o que é do Windows. O menu novo só aceita itens de pacote e junta num submenu os de um
+  mesmo pacote, então são 11 pacotes com local externo (10 posições + Abrir WSL), sem assinatura (precisa do Modo
+  Desenvolvedor). Cada pacote roda num dllhost próprio: o primeiro monta a lista e os outros leem de
+  `cache\contexto\lista.txt`. A extensão da NVIDIA não carrega fora do Explorer, então o item dela abre o app direto.
+  No "Mostrar mais opções" os itens aparecem duas vezes (o original e o do pacote).
 
 Autostart: `HKCU\...\Run` (`TemaBarra`, `TemaMenus`, `TemaJanelas`, via `rundll32 bin\<dll>,Run`) e `HKLM\...\Run`
 (`FundoVivo`, para todos os usuários). Tela de bloqueio: `HKLM\...\PersonalizationCSP` aponta para
@@ -75,6 +84,7 @@ compila um. Para trocar o que está rodando, use o script do componente (com `-B
 | TemaMenus | `tools\reload-menus.ps1 [-Build]` | derruba os hosts do Iniciar e dos painéis (o Windows relança) |
 | TemaJanelas | `tools\reload-settings.ps1 [-Build]` | Configurações já abertas mantêm a DLL velha até reabrir |
 | FundoVivo | `tools\reload-wallpaper.ps1 [-Build] [-Shot x.png]` | nenhum |
+| TemaContexto | `tools\reload-contextmenu.ps1 [-Build] [-Remove]` | registra os pacotes de novo e fecha os dllhost com a DLL velha |
 
 ## Cuidados
 
