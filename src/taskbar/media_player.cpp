@@ -479,11 +479,13 @@ static void PutPlayer(Controls::Grid const& grid) {
     g_players.push_back(player);
 }
 
-// A cada segundo, junto com o resto da barra: relê Player (0 esconde), PlayerOnda (o estilo da onda) e as cores do
-// tema. Mudou o estilo ou alguma cor, troca cada player por um novo com o visual novo.
+// A cada segundo, junto com o resto da barra: relê Player (0 esconde), PlayerOnda (o estilo da onda), PlayerOndaForca
+// (30 a 100%, padrão 70: com menos força a barra precisa de mais som para encher e ficar vermelha) e as cores do tema.
+// Mudou o estilo ou alguma cor, troca cada player por um novo com o visual novo.
 void RefreshMediaPlayer() {
     int style = Setting(L"PlayerOnda", 0) == 1;
     g_enabled = Enabled(L"Player");
+    g_equalizer.range = 18.f * 100 / std::clamp<DWORD>(Setting(L"PlayerOndaForca", 70), 30, 100);
     ReloadPalette();
     if (style == g_style && PaletteVersion() == g_palette) return;
 
