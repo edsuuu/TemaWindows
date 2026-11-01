@@ -13,6 +13,7 @@ struct Equalizer {
     float ring[kSamples] = {};
     float level[kBands] = {};
     float average[kBands] = {};
+    float range = 18;  // dB do vazio ao cheio (a barra enche range - 4 dB acima da média)
     int position = 0;
 
     void Read(IAudioCaptureClient* capture);

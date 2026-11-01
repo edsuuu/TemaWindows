@@ -100,8 +100,7 @@ static void RemoveFocusRing(std::wstring_view type, InstanceHandle handle) {
 
 // Cada elemento novo da árvore XAML da barra: fundo com blur e botão "mostrar área de trabalho" invisível (continua
 // clicável) com Fundo; vidro no painel dos ícones ocultos e na caixa de pesquisa com Vidro; o player do Spotify (sempre:
-// Player liga e desliga na hora) e a ilha XAML de cada barra, para saber a do monitor principal, onde ele aparece; e
-// os ícones.
+// Player liga e desliga na hora) e a ilha XAML de cada barra, para a mãozinha dos botões dele; e os ícones.
 void OnElementAdded(ParentChildRelation const&, VisualElement const& element) {
     std::wstring_view type = element.Type ? element.Type : L"", name = element.Name ? element.Name : L"";
     RemoveFocusRing(type, element.Handle);

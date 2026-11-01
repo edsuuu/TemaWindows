@@ -39,7 +39,7 @@ struct WaveStyle {
 
 constexpr WaveStyle kWaveStyles[2] = {{37, 2, 4, true}, {Equalizer::kBands, 3, 5, false}};
 constexpr float kWaveHeight = 32;
-constexpr double kLeft = 12, kCover = 40, kGap = 10, kInfoWidth = 220, kRoomGap = 16;
+constexpr double kLeft = 12, kCover = 40, kGap = 10, kInfoWidth = 220, kMinInfoWidth = 90, kRoomGap = 16;
 constexpr double kShortWidth = kLeft + kCover + kGap + kInfoWidth;
 
 constexpr float WaveWidth(WaveStyle const& style) {
@@ -47,7 +47,7 @@ constexpr float WaveWidth(WaveStyle const& style) {
 }
 
 struct Player {
-    Controls::StackPanel root{nullptr};
+    Controls::StackPanel root{nullptr}, info{nullptr};
     Controls::Border cover{nullptr}, wave{nullptr};
     Controls::Grid track{nullptr};
     Controls::TextBlock title{nullptr}, artist{nullptr}, elapsed{nullptr}, total{nullptr};
@@ -224,11 +224,11 @@ static std::shared_ptr<Player> MakePlayer() {
     Put(bottom, p->track, 2);
     Put(bottom, p->total, 3);
 
-    Controls::StackPanel info;
-    info.Width(kInfoWidth);
-    info.VerticalAlignment(VerticalAlignment::Center);
-    info.Children().Append(top);
-    info.Children().Append(bottom);
+    p->info = Controls::StackPanel();
+    p->info.Width(kInfoWidth);
+    p->info.VerticalAlignment(VerticalAlignment::Center);
+    p->info.Children().Append(top);
+    p->info.Children().Append(bottom);
 
     p->wave = MakeWave(*p, kWaveStyles[g_style]);
     p->root = Controls::StackPanel();
@@ -240,7 +240,7 @@ static std::shared_ptr<Player> MakePlayer() {
     p->root.VerticalAlignment(VerticalAlignment::Center);
     p->root.Visibility(Visibility::Collapsed);
     p->root.Children().Append(p->cover);
-    p->root.Children().Append(info);
+    p->root.Children().Append(p->info);
     p->root.Children().Append(p->wave);
 
     std::weak_ptr<Player> weak = p;
@@ -280,7 +280,12 @@ static void ShowCover(Player& p, std::shared_ptr<std::vector<BYTE>> const& pixel
 
 // A música no player: nome, artista, capa, ícones de aleatória e tocar/pausar, e o tempo andando entre uma leitura do
 // Spotify e outra (no máximo 2 s além da última, como no cartão). Sem duração (anúncio, podcast ao vivo), sem tempo.
-static void ShowSong(Player& p, NowPlaying const& song, double now) {
+// O texto fica com a largura `info`; menor que a normal (barra cheia de ícones), dos botões só sobra o tocar/pausar e o
+// tempo sai.
+static void ShowSong(Player& p, NowPlaying const& song, double now, double info) {
+    bool compact = info < kInfoWidth;
+    if (p.info.Width() != info) p.info.Width(info);
+    for (int i : {0, 1, 3}) p.buttons[i].Visibility(compact ? Visibility::Collapsed : Visibility::Visible);
     SetText(p.title, song.title);
     SetText(p.artist, song.artist);
     ShowCover(p, song.cover);
@@ -292,11 +297,11 @@ static void ShowSong(Player& p, NowPlaying const& song, double now) {
         p.shuffle.Foreground(Brush(Ink::Text, 0.92f, song.shuffle ? 0.95f : 0.4f));
     }
 
-    auto timed = song.duration > 0 ? Visibility::Visible : Visibility::Collapsed;
+    auto timed = song.duration > 0 && !compact ? Visibility::Visible : Visibility::Collapsed;
     p.elapsed.Visibility(timed);
     p.track.Visibility(timed);
     p.total.Visibility(timed);
-    if (song.duration <= 0) return;
+    if (timed == Visibility::Collapsed) return;
 
     double position = std::clamp(song.position + (song.playing ? std::min(now - song.readAt, 2.0) : 0), 0.0, song.duration);
     SetText(p.elapsed, FormatTime(position));
@@ -331,7 +336,7 @@ static bool OverButton() {
     return false;
 }
 
-// Janela da ilha XAML da barra principal: o XAML da barra não tem cursor por elemento e a ilha põe a seta a cada
+// Janela da ilha XAML de cada barra: o XAML da barra não tem cursor por elemento e a ilha põe a seta a cada
 // WM_SETCURSOR; antes dela, com o ponteiro num botão do player, fica a mãozinha. Exceção não pode sair daqui (derrubaria
 // o Explorer).
 static LRESULT CALLBACK CursorProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR) {
@@ -345,31 +350,23 @@ static LRESULT CALLBACK CursorProc(HWND window, UINT message, WPARAM wParam, LPA
     return DefSubclassProc(window, message, wParam, lParam);
 }
 
-// XamlRoot da barra do monitor principal. Cada barra é uma ilha XAML numa janela própria: a do principal fica dentro
-// da Shell_TrayWnd, as outras na Shell_SecondaryTrayWnd. A ilha só ganha janela depois de entrar na barra, por isso a
-// procura é a cada volta; ilha fechada ou com a janela destruída (a barra foi recriada) sai da lista. A janela da
-// principal ganha o CursorProc (instalar de novo só atualiza o que já está lá).
-static winrt::Windows::UI::Xaml::XamlRoot PrimaryRoot() {
-    winrt::Windows::UI::Xaml::XamlRoot primary{nullptr};
-    std::erase_if(g_islands, [&](DesktopWindowXamlSource const& island) {
+// Cada barra é uma ilha XAML numa janela própria, e cada janela ganha o CursorProc (instalar de novo só atualiza o que
+// já está lá). A ilha só ganha janela depois de entrar na barra, por isso a procura é a cada volta; ilha fechada
+// (Content lança exceção) ou com a janela destruída (a barra foi recriada) sai da lista.
+static void HookIslands() {
+    std::erase_if(g_islands, [](DesktopWindowXamlSource const& island) {
         try {
-            auto content = island.Content();
+            (void)island.Content();
             HWND window = nullptr;
-            wchar_t owner[64] = {};
             if (FAILED(island.as<IDesktopWindowXamlSourceNative>()->get_WindowHandle(&window)) || !window) return false;
             if (!IsWindow(window)) return true;
 
-            GetClassNameW(GetAncestor(window, GA_ROOT), owner, 64);
-            if (content && !wcscmp(owner, L"Shell_TrayWnd")) {
-                primary = content.XamlRoot();
-                SetWindowSubclass(window, CursorProc, 1, 0);
-            }
+            SetWindowSubclass(window, CursorProc, 1, 0);
             return false;
         } catch (...) {
             return true;
         }
     });
-    return primary;
 }
 
 // Espaço livre à esquerda dos botões da barra (até o Iniciar, o primeiro deles), em DIPs. Sem achar os botões, sobra
@@ -389,13 +386,14 @@ static double FreeWidth(FrameworkElement const& grid) {
     return left;
 }
 
-// A cada 250 ms: o player aparece na barra do monitor principal sempre que o Spotify tem música, tocando ou pausada
-// (pausada, a onda vira a linha parada), se couber antes do Iniciar (sem espaço para a onda, só ela sai). Sem poder
-// aparecer (Player = 0, jogo em tela cheia) nem lê o Spotify. O som é capturado só com a onda na tela e a música
+// A cada 250 ms: o player aparece na barra de cada monitor sempre que o Spotify tem música, tocando ou pausada
+// (pausada, a onda vira a linha parada), se couber antes do Iniciar (sem espaço para a onda, só ela sai; com menos
+// ainda, a versão compacta, até o texto ficar com kMinInfoWidth). Sem poder
+// aparecer (Player = 0, jogo em tela cheia) nem lê o Spotify. O som é capturado só com alguma onda na tela e a música
 // tocando neste PC; tocando em outro aparelho, a onda dança sozinha.
 static void Tick() {
-    auto primary = PrimaryRoot();
-    bool idle = !g_enabled || !primary || FullScreenApp();
+    HookIslands();
+    bool idle = !g_enabled || FullScreenApp();
     g_idle = idle;
     NowPlaying song = CurrentMedia();
     bool show = !idle && !song.title.empty();
@@ -407,10 +405,11 @@ static void Tick() {
         return p->gone;
     });
     for (auto const& p : g_players) {
-        double room = show && p->root.XamlRoot() == primary ? FreeWidth(ParentOf(p->root)) - kRoomGap : 0;
+        double room = show ? FreeWidth(ParentOf(p->root)) - kRoomGap : 0;
+        double info = std::min(kInfoWidth, std::floor(room - (kShortWidth - kInfoWidth)));
         p->wave.Visibility(room >= full ? Visibility::Visible : Visibility::Collapsed);
-        p->root.Visibility(room >= kShortWidth ? Visibility::Visible : Visibility::Collapsed);
-        if (room >= kShortWidth) ShowSong(*p, song, now);
+        p->root.Visibility(info >= kMinInfoWidth ? Visibility::Visible : Visibility::Collapsed);
+        if (info >= kMinInfoWidth) ShowSong(*p, song, now, info);
         waving |= room >= full;
     }
 
@@ -480,11 +479,13 @@ static void PutPlayer(Controls::Grid const& grid) {
     g_players.push_back(player);
 }
 
-// A cada segundo, junto com o resto da barra: relê Player (0 esconde), PlayerOnda (o estilo da onda) e as cores do
-// tema. Mudou o estilo ou alguma cor, troca cada player por um novo com o visual novo.
+// A cada segundo, junto com o resto da barra: relê Player (0 esconde), PlayerOnda (o estilo da onda), PlayerOndaForca
+// (30 a 100%, padrão 70: com menos força a barra precisa de mais som para encher e ficar vermelha) e as cores do tema.
+// Mudou o estilo ou alguma cor, troca cada player por um novo com o visual novo.
 void RefreshMediaPlayer() {
     int style = Setting(L"PlayerOnda", 0) == 1;
     g_enabled = Enabled(L"Player");
+    g_equalizer.range = 18.f * 100 / std::clamp<DWORD>(Setting(L"PlayerOndaForca", 70), 30, 100);
     ReloadPalette();
     if (style == g_style && PaletteVersion() == g_palette) return;
 
@@ -515,8 +516,7 @@ void AddMediaPlayer(FrameworkElement const& frame) {
     StartPlayerTimers();
 }
 
-// Guarda a ilha XAML (DesktopWindowXamlSource) de cada barra, para achar a do monitor principal, onde o player
-// aparece.
+// Guarda a ilha XAML (DesktopWindowXamlSource) de cada barra, para a janela dela ganhar a mãozinha dos botões.
 void AddTaskbarIsland(winrt::Windows::Foundation::IInspectable const& object) {
     if (auto island = object.try_as<DesktopWindowXamlSource>()) g_islands.push_back(island);
 }
