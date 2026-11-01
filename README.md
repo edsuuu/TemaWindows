@@ -47,9 +47,10 @@ Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin
   logo a cada segundo, então o app do Wallget muda a barra sem reiniciar o Explorer. Player do Spotify à esquerda da
   barra do monitor principal quando uma janela maximizada esconde a área de trabalho (e o cartão da música): capa, nome
   com aleatória ⏮ ⏯ ⏭, artista com o tempo e a barra de progresso, e a onda do som (o mesmo loopback e equalizador do
-  FundoVivo, com as barras saindo do centro; pausada, vira uma linha de pontinhos). Some com o Spotify fechado, com
-  jogo ou app em tela cheia e quando não cabe antes do Iniciar (sem espaço para a onda, só ela sai). É XAML montado
-  dentro da barra, no `Grid` da `TaskbarFrame`; a barra principal é a ilha XAML dentro da `Shell_TrayWnd`.
+  FundoVivo), nas cores do tema do Wallget e vermelha nos picos. A onda sai do centro ou cresce de baixo para cima como
+  no cartão (escolha no app); pausada, fica parada e o player continua. Some com o Spotify fechado, com jogo ou app em
+  tela cheia e quando não cabe antes do Iniciar (sem espaço para a onda, só ela sai). É XAML montado dentro da barra,
+  no `Grid` da `TaskbarFrame`; a barra principal é a ilha XAML dentro da `Shell_TrayWnd`.
 - **TemaMenus** — vidro liso no Iniciar, pesquisa, Configurações Rápidas e notificações; Iniciar no estilo do conceito
   (barra lateral com os botões nativos de conta/energia, Início/Apps/Criar, pastas na largura toda, lupa com degradê).
   Nas Configurações Rápidas: barra de tempo da música no cartão de mídia (só leitura, atualiza só com o painel aberto),
@@ -140,7 +141,8 @@ Números (DWORD) dos widgets e do fundo:
 - `ClimaUnidade` (1 = °F), `ClimaMaxMin` (0 esconde máxima e mínima), `FundoPausa` (0 não pausa com jogo ou tela
   cheia), `FundoOndular` (1 ondula a imagem como o golden), `IniciarComWindows` (0 = o Wallget não se põe no Run).
 - Barra: `BlurModo` (0 acrílico, 1 blur, 2 transparente), `BlurRaio` (px do blur, padrão 9) e `BlurVeu` (0 a 255,
-  véu preto por cima; padrão 31). `Player` (0 tira o player do Spotify da barra; vale ao reiniciar o Explorer).
+  véu preto por cima; padrão 31). `Player` (0 tira o player do Spotify da barra) e `PlayerOnda` (0 onda saindo do
+  centro, 1 de baixo para cima), os dois na hora.
 
 ## Compilar e recarregar
 
