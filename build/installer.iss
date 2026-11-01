@@ -115,7 +115,8 @@ end;
 // Para o que estiver rodando antes de copiar os arquivos (o novo sobe no fim). Inclui os nomes de desenvolvimento
 // (FundoVivo/FundoConfig): o papel de parede só roda um por vez, então um deles aberto impediria o novo de subir. A
 // TemaBarra.dll antiga continua carregada no Explorer: ela é renomeada (dá para renomear uma DLL em uso) para a nova
-// entrar no lugar, e o Explorer passa a usar a nova no próximo login.
+// entrar no lugar, e o Explorer passa a usar a nova no próximo login. Com a barra desmarcada agora, ela só deixa de
+// iniciar com o Windows (a DLL fica, carregada no Explorer até o próximo login).
 // ponytail: a .old de uma atualização só sai na seguinte; apagar no login se juntar muitas.
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
@@ -128,8 +129,11 @@ begin
   TaskbarWasInstalled := FileExists(Dll);
   if TaskbarWasInstalled then begin
     Exec('powershell.exe', StopTaskbarCommand(''), '', SW_HIDE, ewWaitUntilTerminated, Code);
-    DeleteFile(Dll + '.old');
-    RenameFile(Dll, Dll + '.old');
+    if WizardIsTaskSelected('barra') then begin
+      DeleteFile(Dll + '.old');
+      RenameFile(Dll, Dll + '.old');
+    end else if TaskbarFree then
+      RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'TemaBarra');
   end;
   Result := '';
 end;
