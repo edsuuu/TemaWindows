@@ -136,10 +136,10 @@ static void BandLevels(std::complex<float> const* spectrum, float* decibels) {
 }
 
 // Equalizador: FFT das últimas 2048 amostras (janela de Hann, ~23 Hz por faixa) somada em 28 bandas. Cada banda em dB
-// relativo à própria média do último ~1,5 s: na média a barra fica baixinha, 14 dB acima enche (volume alto ou baixo
-// dá o mesmo efeito, e graves e agudos se mexem igual). Silêncio (ou banda 55 dB abaixo da mais forte) fica zerado e
-// não mexe na média, para não "levantar" ruído nem estourar as barras quando a próxima música começa. Sobe rápido e
-// cai devagar.
+// relativo à própria média do último ~1,5 s: na média a barra fica baixinha, range - 4 dB acima (14 dB no padrão)
+// enche (volume alto ou baixo dá o mesmo efeito, e graves e agudos se mexem igual). Silêncio (ou banda 55 dB abaixo da
+// mais forte) fica zerado e não mexe na média, para não "levantar" ruído nem estourar as barras quando a próxima música
+// começa. Sobe rápido e cai devagar.
 void Equalizer::Update(bool active, float dt) {
     float target[kBands] = {};
 
@@ -155,7 +155,7 @@ void Equalizer::Update(bool active, float dt) {
             if (decibels[band] < noiseFloor) continue;
 
             average[band] += (decibels[band] - average[band]) * std::min(1.f, dt / 1.5f);
-            target[band] = std::clamp((decibels[band] - average[band] + 4) / 18, 0.f, 1.f);
+            target[band] = std::clamp((decibels[band] - average[band] + 4) / range, 0.f, 1.f);
         }
     }
     Approach(target, dt);
