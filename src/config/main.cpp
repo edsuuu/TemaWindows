@@ -83,6 +83,7 @@ static bool showJson = true;
 static int position = 2;
 static int weatherSide = 2;
 static bool dirty = false;
+static WPARAM searches = 0;
 static Place city;
 static std::vector<Place> places;
 static Preview preview;
@@ -237,9 +238,9 @@ static void Search(HWND window) {
     if (query.empty()) return;
 
     SetDlgItemTextW(window, kSearch, L"Buscando...");
-    std::thread([window, query] {
+    std::thread([window, query, id = ++searches] {
         std::string json = HttpsRequest(L"geocoding-api.open-meteo.com", L"/v1/search?count=5&language=pt&format=json&name=" + query);
-        PostMessageW(window, kSearchDone, 0, LPARAM(new std::vector<Place>(ParsePlaces(json))));
+        PostMessageW(window, kSearchDone, id, LPARAM(new std::vector<Place>(ParsePlaces(json))));
     }).detach();
 }
 
@@ -469,6 +470,7 @@ static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPA
         return 0;
     case kSearchDone: {
         std::unique_ptr<std::vector<Place>> found((std::vector<Place>*)lParam);
+        if (wParam != searches) return 0;  // resposta de uma busca anterior, que chegou depois
         SetDlgItemTextW(window, kSearch, L"Buscar");
         ShowPlaces(window, *found);
         Command(window, kResults, CBN_SELCHANGE);
