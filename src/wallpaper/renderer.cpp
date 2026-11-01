@@ -6,6 +6,7 @@
 #include "wallpaper/click_zones.h"
 #include "wallpaper/morph_theme.h"
 #include "wallpaper/nbhd_theme.h"
+#include "wallpaper/palette.h"
 #include "wallpaper/timing.h"
 #include "wallpaper/weather.h"
 #include "common/paths.h"
@@ -42,7 +43,9 @@ struct Surface {
 
 struct Monitors {
     std::vector<RECT> areas;
+    std::vector<RECT> works;
     std::vector<D2D1::Matrix3x2F> corners;
+    RECT primaryWork{};
     float primaryWidth = 0;
     float primaryHeight = 0;
     CornerLayout layout{};
@@ -120,9 +123,8 @@ static bool CreateSurface(Graphics const& g, HINSTANCE instance, HWND parent, Su
     return true;
 }
 
-// Monitores em coordenadas da nossa janela. O bloco do canto (música + indicadores) fica no canto de cima à direita da
-// área útil de cada monitor: é desenhado no lugar do principal e deslocado para os outros. O cartão tem largura fixa,
-// com a capa à esquerda e o texto e o equalizador colados nela até a borda direita.
+// Monitores e áreas úteis em coordenadas da nossa janela. O bloco do canto (música + indicadores) é desenhado no lugar
+// do principal e deslocado para os outros (Wallpaper::PlaceBlock põe na posição escolhida).
 static Monitors ReadMonitors(HWND parent, float scale) {
     std::vector<MONITORINFO> infos;
     EnumDisplayMonitors(nullptr, nullptr, [](HMONITOR monitor, HDC, LPRECT, LPARAM p) -> BOOL {
@@ -138,16 +140,16 @@ static Monitors ReadMonitors(HWND parent, float scale) {
     Monitors monitors;
     for (auto& info : infos) {
         MapWindowPoints(HWND_DESKTOP, parent, (POINT*)&info.rcMonitor, 2);
+        MapWindowPoints(HWND_DESKTOP, parent, (POINT*)&info.rcWork, 2);
         monitors.areas.push_back(info.rcMonitor);
-        monitors.corners.push_back(
-            D2D1::Matrix3x2F::Translation(float(info.rcWork.right - primary.rcWork.right), float(info.rcWork.top - primary.rcWork.top)));
+        monitors.works.push_back(info.rcWork);
     }
     MapWindowPoints(HWND_DESKTOP, parent, (POINT*)&primary.rcWork, 2);
 
+    monitors.primaryWork = primary.rcWork;
     monitors.primaryWidth = float(primary.rcMonitor.right - primary.rcMonitor.left);
     monitors.primaryHeight = float(primary.rcMonitor.bottom - primary.rcMonitor.top);
-    float right = primary.rcWork.right - 44 * scale, cardLeft = roundf(right - 380 * scale);
-    monitors.layout = {right, primary.rcWork.top + 36 * scale, cardLeft, cardLeft + CoverSize() + 16 * scale, 36 * scale, scale};
+    monitors.layout = {0, 0, 0, 0, 36 * scale, scale};
     return monitors;
 }
 
@@ -193,14 +195,16 @@ private:
     bool morphLoaded = false;
     bool dancing = false;
     char theme = 'n';
+    int position = 2;
 
     void UpdateCapture(NowPlaying const& song, bool hidden, ULONGLONG now);
     bool CheckState(HWND parent, Surface const& surface, NowPlaying const& song, ULONGLONG now, bool& hidden);
     void UpdateWidgets(NowPlaying const& song, Monitors const& monitors, double now);
+    void PlaceBlock(Monitors& monitors) const;
     Block LayoutBlock(Monitors const& monitors) const;
     void DrawBackground(Surface const& surface, Monitors const& monitors, Block const& block, double now);
     void DrawOverlay(Surface const& surface, Monitors const& monitors, Block const& block, double now);
-    void RenderFrame(Surface const& surface, Monitors const& monitors, NowPlaying const& song);
+    void RenderFrame(Surface const& surface, Monitors& monitors, NowPlaying const& song);
     void UpdateButtons(HWND parent, Monitors const& monitors, bool hidden);
     void WaitNextFrame(double frameStart);
 };
@@ -220,13 +224,18 @@ void Wallpaper::UpdateCapture(NowPlaying const& song, bool hidden, ULONGLONG now
     }
 }
 
-// A cada meio segundo: fundo visível?, cor da seleção, tema, captura de som e tamanho da área de trabalho. Resolução ou
-// monitores mudaram (ou o Explorer levou o WorkerW junto): destrói a janela e devolve false para montar tudo de novo.
+// A cada meio segundo: fundo visível?, cor da seleção, tema, cores, JSON, posições do bloco e do clima, captura de som
+// e tamanho da área de trabalho. Resolução ou monitores mudaram (ou o Explorer levou o WorkerW junto): destrói a janela e devolve false para
+// montar tudo de novo.
 bool Wallpaper::CheckState(HWND parent, Surface const& surface, NowPlaying const& song, ULONGLONG now, bool& hidden) {
     hidden = ComputeWallpaperHidden();
     SetWallpaperHidden(hidden);
     RestoreSelectionColors();
     theme = ReadTheme();
+    ReloadPalette();
+    panel.showJson = Enabled(L"Json");
+    panel.weatherSide = int(Setting(L"PosicaoClima", 2) % 3);
+    position = int(Setting(L"Posicao", 2) % 9);
     UpdateCapture(song, hidden, now);
 
     RECT current;
@@ -258,6 +267,36 @@ void Wallpaper::UpdateWidgets(NowPlaying const& song, Monitors const& monitors, 
     StartWeatherService();
     double networkPercent = network.Read();
     rings.Update(stats, network, networkPercent);
+}
+
+// Põe o bloco na posição escolhida (Posicao: 0 a 8, da esquerda para a direita e de cima para baixo; 2 = canto de
+// cima à direita), a 44 DIPs da borda na horizontal (mais o que o painel passa do bloco, com o clima à esquerda) e 36
+// na vertical. No meio e embaixo conta a altura de agora (sem música o bloco encolhe), então ele cresce e encolhe em
+// volta do ponto escolhido. Nos outros monitores vai para o mesmo ponto da área útil (canto, meio da borda ou centro).
+void Wallpaper::PlaceBlock(Monitors& monitors) const {
+    auto& l = monitors.layout;
+    const float s = l.scale, width = 380 * s, margin = 44 * s + panel.Overflow();
+    const int column = position % 3, row = position / 3;
+    RECT const& work = monitors.primaryWork;
+    float p = presence * presence * (3 - 2 * presence);
+    float height = p * (118 * s + card.NextRowHeight(s)) + 2 * l.ringRadius + 24 * s + panel.Height();
+    float left = column == 0 ? work.left + margin : column == 1 ? (work.left + work.right - width) / 2 : work.right - margin - width;
+
+    l.top = row == 0 ? work.top + 36 * s : row == 1 ? (work.top + work.bottom - height) / 2 : work.bottom - 36 * s - height;
+    l.cardLeft = roundf(left);
+    l.right = left + width;
+    l.textLeft = l.cardLeft + CoverSize() + 16 * s;
+
+    auto anchor = [&](RECT const& r) {
+        return D2D1_POINT_2F{column == 0 ? r.left : column == 1 ? (r.left + r.right) / 2.f : r.right,
+                             row == 0 ? r.top : row == 1 ? (r.top + r.bottom) / 2.f : r.bottom};
+    };
+    D2D1_POINT_2F home = anchor(work);
+    monitors.corners.clear();
+    for (RECT const& area : monitors.works) {
+        D2D1_POINT_2F there = anchor(area);
+        monitors.corners.push_back(D2D1::Matrix3x2F::Translation(roundf(there.x - home.x), roundf(there.y - home.y)));
+    }
 }
 
 // Retângulo do bloco do canto (cartão + anéis + painel; sem música, só anéis e painel, que sobem para o lugar do
@@ -357,9 +396,10 @@ void Wallpaper::UpdateButtons(HWND parent, Monitors const& monitors, bool hidden
 }
 
 // Um quadro inteiro.
-void Wallpaper::RenderFrame(Surface const& surface, Monitors const& monitors, NowPlaying const& song) {
+void Wallpaper::RenderFrame(Surface const& surface, Monitors& monitors, NowPlaying const& song) {
     double now = Now();
     UpdateWidgets(song, monitors, now);
+    PlaceBlock(monitors);
 
     Block block = LayoutBlock(monitors);
     DrawBackground(surface, monitors, block, now);
@@ -382,6 +422,7 @@ void Wallpaper::WaitNextFrame(double frameStart) {
 // o fundo; pausado, fica em 0% de GPU.
 void Wallpaper::RunSession(HWND parent, Surface const& surface) {
     Monitors monitors = ReadMonitors(parent, g.scale);
+    PlaceBlock(monitors);
     nbhd.Reset(monitors.primaryWidth, monitors.primaryHeight);
     bool hidden = false, drawn = false;
     ULONGLONG lastCheck = 0;
