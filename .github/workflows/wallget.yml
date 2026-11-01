@@ -39,8 +39,8 @@ jobs:
       - name: Versão
         shell: pwsh
         run: |
-          $version = (Select-String build/installer.iss '#define Version "(.+)"').Matches[0].Groups[1].Value
-          if (-not (Select-String src/config/main.cpp -SimpleMatch "Wallget $version · ")) { throw "O título do app não diz Wallget $version (src/config/main.cpp)" }
+          $version = (Select-String -Path build/installer.iss -Pattern '#define Version "(.+)"').Matches[0].Groups[1].Value
+          if (-not (Select-String -Path src/config/main.cpp -SimpleMatch -Pattern "Wallget $version · ")) { throw "O título do app não diz Wallget $version (src/config/main.cpp)" }
           "VERSION=$version" >> $env:GITHUB_ENV
 
       - name: Inno Setup
