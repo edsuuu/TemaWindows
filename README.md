@@ -11,13 +11,14 @@ src\taskbar\    TemaBarra.dll   (explorer.exe)
 src\menus\      TemaMenus.dll   (StartMenuExperienceHost, SearchHost, ShellHost, ShellExperienceHost)
 src\settings\   TemaJanelas.dll (SystemSettings)
 src\wallpaper\  FundoVivo.exe   (janela filha do WorkerW, atrás dos ícones da área de trabalho)
+src\config\     FundoConfig.exe (app dos widgets do FundoVivo: cores, JSON, posições e cidade, com prévia)
 src\contextmenu\ TemaContexto.dll (dllhost dos pacotes do menu do clique direito) e o modelo do AppxManifest.xml
-build\          build-<projeto>.bat e build-all.bat (intermediários em build\obj\, apagados no fim)
+build\          build-<projeto>.bat, build-all.bat e build-installer.bat + installer.iss (intermediários em build\obj\, apagados no fim)
 bin\            os binários e contexto\ (pacotes gerados do TemaContexto)
 assets\         fundo.png (tema golden e papel de parede estático), fundo-morph.bin (tema loop), bloqueio-alga.png, folder.ico (ícone de pasta), contexto.png (logo dos pacotes)
 cache\          cache-clima.txt (última resposta do Open-Meteo), contexto\ (lista do menu e ícones das extensões)
 logs\           <binário>.log de cada DLL
-tools\          reload-*.ps1, theme.ps1, capture.exe, capture-wallpaper.exe, effects-test.exe, folder-icon.ps1 (gera o folder.ico)
+tools\          reload-*.ps1, theme.ps1, capture.exe, capture-wallpaper.exe, effects-test.exe, folder-icon.ps1 (gera o folder.ico), hwinfo-setup.ps1 (usado pelo instalador)
 ```
 
 Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin\`.
@@ -41,7 +42,7 @@ Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin
   filhas do Progman, acima dos ícones, e vira comando nos controles de mídia do Windows (sem hook de mouse). A
   aleatória só liga/desliga (a ordem inteligente do Spotify não passa pelos controles do Windows nem pela API). Nome da
   música e do artista sublinham no hover e, no clique, abrem a música ou o artista no Spotify (link exato com o login
-  do Spotify feito; sem ele, pela busca).
+  do Spotify feito; sem ele, pela busca). Cores, JSON, posição (9 lugares) e cidade do clima vêm do FundoConfig.
 - **TemaContexto** — põe no menu novo do clique direito os itens que só apareciam em "Mostrar mais opções" (Git,
   Visual Studio, PhpStorm, 7-Zip, NVIDIA e o que for instalado depois) e o item "Abrir WSL" (Terminal com o PowerShell
   padrão já no WSL, na home). Lê os verbos (`shell\`) e as extensões de menu (`shellex\ContextMenuHandlers`) de
@@ -60,6 +61,16 @@ Autostart: `HKCU\...\Run` (`TemaBarra`, `TemaMenus`, `TemaJanelas`, `TemaContext
 (`FundoVivo`, para todos os usuários). Tela de bloqueio: `HKLM\...\PersonalizationCSP` aponta para
 `assets\bloqueio-alga.png`.
 
+## Wallget (instalador dos widgets)
+
+`build\build-installer.bat` compila o FundoVivo e o FundoConfig e gera `bin\Wallget-Setup.exe` (Inno Setup 6:
+`winget install JRSoftware.InnoSetup --scope user`). Instala por usuário em `%LOCALAPPDATA%\Programs\Wallget` como
+`Wallget.exe` (o papel de parede, no `HKCU\...\Run`) e `WallgetConfig.exe` (atalho "Wallget" no Iniciar). Se faltar o
+HWiNFO (temperatura da CPU) ou a tarefa que reabre ele a cada 11 h (a memória compartilhada da versão grátis desliga
+em 12 h), oferece instalar com `tools\hwinfo-setup.ps1`, o único passo que pede administrador.
+
+No app, nada vai para o papel de parede antes do Salvar; o FundoVivo relê o registro a cada 0,5 s.
+
 ## Liga/desliga
 
 Valores em `HKCU\Software\TemaBarra` (DWORD, ligado quando não existe). Para ver e mudar:
@@ -73,6 +84,12 @@ tools\theme.ps1 set FundoTema loop      # o tema do fundo vale na hora
 Textos (REG_SZ) que ficam fora do código:
 
 - `ClimaLatitude` e `ClimaLongitude` — lugar do clima (ex.: `-23.55` e `-46.63`); sem eles, o painel fica sem clima.
+  `ClimaCidade` é só o nome mostrado no FundoConfig, que escreve os três ao escolher uma cidade.
+- `CorTexto`, `CorTextoSuave`, `CorAnel`, `CorEqualizador`, `CorPico`, `CorJsonChave`, `CorJsonValor`,
+  `CorJsonPontuacao` — cores dos widgets (`#RRGGBB`); sem o valor, a cor padrão.
+
+Números (DWORD) dos widgets: `Json` (0 esconde o JSON), `Posicao` (0 a 8, da esquerda para a direita e de cima para
+baixo; padrão 2, em cima à direita) e `PosicaoClima` (0 à esquerda do JSON, 1 em cima, 2 à direita).
 - `SpotifyClientId` — Client ID do app do Spotify para a próxima música da fila (login uma vez com
   `tools\spotify-login.ps1`; o token fica criptografado em `cache\`).
 
