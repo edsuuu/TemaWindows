@@ -50,6 +50,7 @@ constexpr int kSize = 540;
 constexpr int kMarginStep = 543;
 constexpr int kShadow = 546;
 constexpr int kBlurRadius = 549;
+constexpr int kWidth = 555;
 constexpr int kVeil = 552;
 constexpr int kFirstMonitor = 560;
 constexpr int kFirstTheme = 570;
@@ -182,8 +183,8 @@ static std::vector<Place> places;
 static Preview preview;
 
 const Stepper kSteppers[] = {
-    {kSize, &o.size, 50, 200, 10, L"%"},          {kMarginStep, &o.margin, 0, 200, 4, L" px"}, {kShadow, &o.shadow, 0, 100, 5, L"%"},
-    {kBlurRadius, &blurRadius, 0, 40, 1, L" px"}, {kVeil, &veilPercent, 0, 100, 5, L"%"},
+    {kSize, &o.size, 50, 200, 10, L"%"},   {kWidth, &o.width, 380, 800, 20, L" px"},     {kMarginStep, &o.margin, 0, 200, 4, L" px"},
+    {kShadow, &o.shadow, 0, 100, 5, L"%"}, {kBlurRadius, &blurRadius, 0, 40, 1, L" px"}, {kVeil, &veilPercent, 0, 100, 5, L"%"},
 };
 
 // DIPs -> pixels na escala do sistema.
@@ -303,6 +304,7 @@ static void Apply() {
     WriteNumber(L"Posicao", o.position);
     WriteNumber(L"PosicaoClima", o.weatherSide);
     WriteNumber(L"Escala", o.size);
+    WriteNumber(L"Largura", o.width);
     WriteNumber(L"Margem", o.margin);
     WriteNumber(L"Sombra", o.shadow);
     std::wstring hidden;
@@ -453,6 +455,7 @@ static void Arrange(HWND window) {
         y += 3 * 28 + 16;
         choices(L"Clima em relação ao JSON", kSide, 3);
         stepper(L"Tamanho do bloco", kSize);
+        stepper(L"Largura do bloco", kWidth);
         stepper(L"Distância da borda", kMarginStep);
         stepper(L"Sombra atrás do bloco", kShadow);
         if (monitors.size() > 1) {
@@ -707,7 +710,8 @@ static void PaintLabels(HWND window) {
 }
 
 // Direct3D + Direct2D na janela da prévia (como no FundoVivo) e os mesmos widgets dele: cartão da música, anéis e o
-// painel do JSON/clima, num bloco de 380 DIPs, e embaixo a barra de tarefas com o logo do Iniciar.
+// painel do JSON/clima, no bloco da largura escolhida (o layout é refeito a cada quadro), e embaixo a barra de tarefas
+// com o logo do Iniciar.
 static bool CreatePreview(HWND window, int width, int height) {
     auto& p = preview;
     if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0, D3D11_SDK_VERSION,
@@ -744,8 +748,6 @@ static bool CreatePreview(HWND window, int width, int height) {
     p.stats = std::make_unique<SystemStats>(adapterDesc.AdapterLuid);
     p.card.Create(p.dwrite.Get(), scale);
     p.rings.Create(p.factory.Get(), p.dwrite.Get(), scale);
-    float cardLeft = float(Px((kPreviewWidth - 380) / 2));
-    p.layout = {cardLeft + 380 * scale, 30 * scale, cardLeft, cardLeft + CoverSize() + 16 * scale, 36 * scale, scale};
     p.lastFrame = Now();
     return true;
 }
@@ -778,7 +780,7 @@ static void DrawTaskbar(float width, float height) {
 
 // Um quadro da prévia com o que está na tela: uma música de exemplo tocando (com a próxima da fila),
 // o equalizador dançando sozinho, os anéis com os números de verdade e o JSON/clima do jeito que o FundoVivo desenha,
-// no tamanho escolhido; embaixo, a barra com o logo.
+// no tamanho escolhido (o bloco largo encolhe até caber); embaixo, a barra com o logo.
 static void DrawPreview() {
     auto& p = preview;
     if (!p.dc) return;
@@ -797,6 +799,8 @@ static void DrawPreview() {
     song.readAt = now;
     NextTrack next{L"Música", L"Próxima da fila", L"Outro artista"};
     p.equalizer.Simulate(now, dt);
+    float cardLeft = float(Px((kPreviewWidth - o.width) / 2));
+    p.layout = {cardLeft + o.width * scale, 30 * scale, cardLeft, cardLeft + CoverSize() + 16 * scale, 36 * scale, scale};
     p.card.Update(p.dc.Get(), p.dwrite.Get(), o.Music() ? song : NowPlaying{}, o.Next() ? next : NextTrack{}, p.layout, dt);
     if (now - p.lastReading > 1.5) {
         p.lastReading = now;
@@ -806,7 +810,8 @@ static void DrawPreview() {
     }
 
     auto const& l = p.layout;
-    const float s = l.scale, a = p.card.alpha * p.card.alpha * (3 - 2 * p.card.alpha), k = o.size / 100.f;
+    const float s = l.scale, a = p.card.alpha * p.card.alpha * (3 - 2 * p.card.alpha),
+                k = o.size / 100.f * std::min(1.f, (kPreviewWidth - 40) / o.width);
     float rowTop = l.top + a * (118 * s + p.card.NextRowHeight(s)), ringsY = roundf(rowTop + l.ringRadius + 2 * s);
     float panelY = p.rings.Count() ? ringsY + l.ringRadius + 22 * s : rowTop;
     D2D1::Matrix3x2F zoom = D2D1::Matrix3x2F::Scale(k, k, {(l.cardLeft + l.right) / 2, l.top});

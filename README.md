@@ -112,7 +112,7 @@ Números (DWORD) dos widgets e do fundo:
 - Partes (0 esconde): `Musica`, `Proxima`, `Equalizador`, `AnelCpu`, `AnelRam`, `AnelGpu`, `AnelRede`; o JSON inteiro
   (`Json`) e cada campo dele (`JsonUptime`, `JsonData`, `JsonLuz`, `JsonCpu`, `JsonGpu`, `JsonRam`, `JsonMonitores`).
 - `Posicao` (0 a 8, da esquerda para a direita e de cima para baixo; padrão 2, em cima à direita), `PosicaoClima` (0 à
-  esquerda do JSON, 1 em cima, 2 à direita), `Escala` (50 a 200 %), `Margem` (px da borda, padrão 44) e `Sombra`
+  esquerda do JSON, 1 em cima, 2 à direita), `Escala` (50 a 200 %), `Largura` (380 a 800 px, padrão 380), `Margem` (px da borda, padrão 44) e `Sombra`
   (0 a 100 %, padrão 75).
 - `ClimaUnidade` (1 = °F), `ClimaMaxMin` (0 esconde máxima e mínima), `FundoPausa` (0 não pausa com jogo ou tela
   cheia), `FundoOndular` (1 ondula a imagem como o golden), `IniciarComWindows` (0 = o Wallget não se põe no Run).

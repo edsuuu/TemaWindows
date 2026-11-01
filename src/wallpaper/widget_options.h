@@ -32,6 +32,7 @@ struct WidgetOptions {
     int position = 2;
     int weatherSide = 2;
     int size = 100;
+    int width = 380;
     int margin = 44;
     int shadow = 75;
     std::wstring hiddenMonitors;
