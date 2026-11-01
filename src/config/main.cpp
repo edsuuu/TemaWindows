@@ -500,7 +500,7 @@ static void Arrange(HWND window) {
     case 7:
         row(L"Iniciar com o Windows", kStartup);
         row(HwinfoStatus(), kHwinfo);
-        heading(L"Wallget 1.1.1 ·muda na hora, Salvar mantém");
+        heading(L"Wallget 1.1.1 · muda na hora, Salvar mantém");
         break;
     }
 }
