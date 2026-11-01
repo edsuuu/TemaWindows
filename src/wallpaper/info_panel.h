@@ -8,8 +8,12 @@
 #include <string>
 
 struct InfoPanel {
+    bool showJson = true;
+    int weatherSide = 2;
+
     void Draw(ID2D1DeviceContext* screen, float x, float y, float width, bool lightHovered);
     float Height() const;
+    float Overflow() const;
     D2D1_RECT_F LightRect() const;
 
 private:
@@ -29,11 +33,13 @@ private:
     std::vector<std::wstring> monitors;
     Weather weather;
     std::wstring key;
+    int blockWidth = 0;
     int bitmapWidth = 0;
     int bitmapHeight = 0;
     int second = -1;
     int lastDots = 0;
     int weatherVersion = -1;
+    int palette = -1;
     float scale = 1;
     float charWidth = 0;
     D2D1_RECT_F lightLine{};
@@ -43,5 +49,5 @@ private:
     void Render(SYSTEMTIME const& now, int width, int dots);
     void DrawWeatherColumn(float center, float halfWidth, float top, std::wstring const& temperature, std::wstring const& sky,
                            std::wstring const& range);
-    void PaintText(std::wstring const& text, IDWriteTextFormat* font, D2D1_RECT_F const& box, float gray, float alpha);
+    void PaintText(std::wstring const& text, IDWriteTextFormat* font, D2D1_RECT_F const& box, D2D1_COLOR_F color);
 };

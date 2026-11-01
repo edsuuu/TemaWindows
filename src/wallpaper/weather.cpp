@@ -44,24 +44,34 @@ static ULONGLONG LoadCache(std::wstring const& path) {
     return GetTickCount64() + (ageMs < kRefreshMs ? kRefreshMs - ageMs : 0);
 }
 
-// Thread do clima (Open-Meteo): baixa a cada 30 min, só com o fundo visível (com jogo, tela cheia ou bloqueio, nada de
-// rede), e guarda a resposta em cache\cache-clima.txt; sem internet (ou resposta estranha) tenta de novo em 5 min e
-// fica o último valor. O lugar vem do registro (ClimaLatitude e ClimaLongitude, texto como "-23.55"), para não ficar
-// no código; sem ele, não há clima. O fuso é o do lugar (timezone=auto).
-static void WeatherLoop() {
-    std::wstring cache = ProjectPath(L"cache\\cache-clima.txt");
-    std::wstring latitude = SettingText(L"ClimaLatitude", L""), longitude = SettingText(L"ClimaLongitude", L"");
-    if (latitude.empty() || longitude.empty()) return;
-
+// Tempo de um lugar (Open-Meteo, fuso do lugar) baixado agora e publicado para o painel; "" se falhar (sem internet
+// ou resposta estranha). A prévia do FundoConfig usa direto, com a cidade ainda não salva.
+std::string FetchWeather(std::wstring const& latitude, std::wstring const& longitude) {
     std::wstring path = L"/v1/forecast?latitude=" + latitude + L"&longitude=" + longitude +
                         L"&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min&timezone=auto";
+    std::string json = HttpsRequest(L"api.open-meteo.com", path);
+    if (json.find("\"current\":{") == std::string::npos) return "";
+
+    Publish(json);
+    return json;
+}
+
+// Thread do clima: baixa a cada 30 min, só com o fundo visível (com jogo, tela cheia ou bloqueio, nada de rede), e
+// guarda a resposta em cache\cache-clima.txt; sem internet tenta de novo em 5 min e fica o último valor. O lugar vem
+// do registro (ClimaLatitude e ClimaLongitude, texto como "-23.55"; o FundoConfig grava), para não ficar no código;
+// sem ele, não há clima. Relido a cada volta: trocou de cidade, baixa na hora.
+static void WeatherLoop() {
+    std::wstring cache = ProjectPath(L"cache\\cache-clima.txt"), place;
     ULONGLONG next = LoadCache(cache);
 
     for (;; Sleep(10000)) {
-        if (WallpaperHidden() || GetTickCount64() < next) continue;
+        std::wstring latitude = SettingText(L"ClimaLatitude", L""), longitude = SettingText(L"ClimaLongitude", L"");
+        if (!place.empty() && place != latitude + L"," + longitude) next = 0;
+        place = latitude + L"," + longitude;
+        if (latitude.empty() || longitude.empty() || WallpaperHidden() || GetTickCount64() < next) continue;
 
-        std::string json = HttpsRequest(L"api.open-meteo.com", path);
-        if (json.find("\"current\":{") == std::string::npos) {
+        std::string json = FetchWeather(latitude, longitude);
+        if (json.empty()) {
             next = GetTickCount64() + kRetryMs;
             continue;
         }
@@ -72,7 +82,6 @@ static void WeatherLoop() {
             fwrite(json.data(), 1, json.size(), file);
             fclose(file);
         }
-        Publish(std::move(json));
     }
 }
 

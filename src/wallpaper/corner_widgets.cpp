@@ -1,4 +1,5 @@
 #include "wallpaper/corner_widgets.h"
+#include "wallpaper/palette.h"
 #include "wallpaper/text.h"
 #include "wallpaper/timing.h"
 
@@ -163,7 +164,7 @@ void NowPlayingCard::UpdateNext(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, 
 }
 
 // Desenha a linha da próxima música embaixo da capa: capa de 26 DIPs (um quadrado apagado enquanto não chega), nome
-// (~#D9D9D9) e banda (~#999999) em letra pequena.
+// (CorTexto) e banda (CorTextoSuave) em letra pequena.
 void NowPlayingCard::DrawNext(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility) {
     float alpha = visibility * nextAlpha;
     if (alpha <= 0) return;
@@ -181,9 +182,9 @@ void NowPlayingCard::DrawNext(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brus
         dc->FillRoundedRectangle(frame, brush);
     }
 
-    brush->SetColor({0.85f, 0.85f, 0.85f, 0.95f * alpha});
+    brush->SetColor(Paint(Ink::Text, 0.85f, 0.95f * alpha));
     DrawMarquee(dc, brush, nextTitleLayout.Get(), nextTitleWidth, {x, top - 2 * s}, layout.right - x, 16 * s, s, nextSince);
-    brush->SetColor({0.6f, 0.6f, 0.6f, 0.95f * alpha});
+    brush->SetColor(Paint(Ink::Soft, 0.6f, 0.95f * alpha));
     DrawMarquee(dc, brush, nextArtistLayout.Get(), nextArtistWidth, {x, top + 12 * s}, layout.right - x, 14 * s, s, nextSince);
 }
 
@@ -251,7 +252,7 @@ void NowPlayingCard::DrawButtons(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* b
             brush->SetColor({1, 1, 1, (i == pressed ? 0.16f : 0.09f) * visibility});
             dc->FillRoundedRectangle(plate, brush);
         }
-        brush->SetColor({0.92f, 0.92f, 0.92f, (i == 0 && !shuffle ? 0.4f : 0.95f) * visibility});
+        brush->SetColor(Paint(Ink::Text, 0.92f, (i == 0 && !shuffle ? 0.4f : 0.95f) * visibility));
         dc->DrawText(glyphs[i], 1, iconFont.Get(), box, brush);
         if (i == 0 && shuffle) dc->FillEllipse({{(box.left + box.right) / 2, box.bottom - 3.5f * s}, 1.5f * s, 1.5f * s}, brush);
     }
@@ -270,25 +271,25 @@ void NowPlayingCard::DrawProgress(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* 
     D2D1_RECT_F elapsedBox{start, y - 9 * s, start + totalWidth, y + 9 * s};
     D2D1_RECT_F totalBox{layout.right - totalWidth, y - 9 * s, layout.right, y + 9 * s};
 
-    brush->SetColor({0.62f, 0.62f, 0.62f, 0.95f * visibility});
+    brush->SetColor(Paint(Ink::Soft, 0.62f, 0.95f * visibility));
     dc->DrawText(elapsedText.c_str(), (UINT)elapsedText.size(), elapsedFont.Get(), elapsedBox, brush);
     dc->DrawText(totalText.c_str(), (UINT)totalText.size(), totalFont.Get(), totalBox, brush);
 
     const float left = elapsedBox.right + kTimeGap * s, right = totalBox.left - kTimeGap * s;
     float fraction = float(elapsed / duration);
     D2D1_ROUNDED_RECT bar{{left, y - 1.5f * s, right, y + 1.5f * s}, 1.5f * s, 1.5f * s};
-    brush->SetColor({1, 1, 1, 0.16f * visibility});
+    brush->SetColor(Paint(Ink::Accent, 1, 0.16f * visibility));
     dc->FillRoundedRectangle(bar, brush);
     bar.rect.right = left + (right - left) * fraction;
-    brush->SetColor({0.9f, 0.9f, 0.9f, 0.9f * visibility});
+    brush->SetColor(Paint(Ink::Accent, 0.9f, 0.9f * visibility));
     dc->FillRoundedRectangle(bar, brush);
 }
 
 // Cartão de largura fixa no canto: capa à esquerda (cantos levemente arredondados; enquanto não chega, um quadrado bem
-// apagado no lugar), título (~#F2F2F2) e artista (~#C8C8C8) colados nela até a borda direita, os botões na linha do
-// título, a barra de progresso na do artista e o equalizador na base da capa, de ponta a ponta, com graves à esquerda
-// e agudos à direita. A barra que chega perto do teto vai ficando vermelho bem suave (~#F29191 no teto). Nome da música
-// e do artista ficam sublinhados com o mouse em cima (o clique abre no Spotify).
+// apagado no lugar), título (CorTexto) e artista (CorTextoSuave) colados nela até a borda direita, os botões na linha
+// do título, a barra de progresso na do artista e o equalizador na base da capa, de ponta a ponta, com graves à
+// esquerda e agudos à direita. A barra que chega perto do teto vai passando de CorEqualizador para CorPico (no padrão,
+// vermelho bem suave). Nome da música e do artista ficam sublinhados com o mouse em cima (o clique abre no Spotify).
 void NowPlayingCard::Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, Equalizer const& equalizer,
                           float visibility, int hovered, int pressed, bool titleHovered, bool artistHovered) {
     const float s = layout.scale, top = roundf(layout.top + 2 * s), size = float(CoverSize());
@@ -296,9 +297,9 @@ void NowPlayingCard::Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, C
 
     if (titleLayout) titleLayout->SetUnderline(titleHovered, {0, UINT32(title.size())});
     if (artistLayout) artistLayout->SetUnderline(artistHovered, {0, UINT32(artist.size())});
-    brush->SetColor({0.95f, 0.95f, 0.95f, 0.97f * visibility});
+    brush->SetColor(Paint(Ink::Text, 0.95f, 0.97f * visibility));
     DrawMarquee(dc, brush, titleLayout.Get(), titleWidth, {left, top - 2 * s}, TitleMax(layout), 30 * s, s, titleSince);
-    brush->SetColor({0.78f, 0.78f, 0.78f, 0.95f * visibility});
+    brush->SetColor(Paint(Ink::Soft, 0.78f, 0.95f * visibility));
     DrawMarquee(dc, brush, artistLayout.Get(), artistWidth, {left, top + 28 * s}, artistMax, 22 * s, s, titleSince);
     DrawButtons(dc, brush, layout, visibility, hovered, pressed);
     DrawProgress(dc, brush, layout, visibility);
@@ -307,7 +308,8 @@ void NowPlayingCard::Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, C
     for (int i = 0; i < Equalizer::kBands; i++) {
         float level = equalizer.level[i], height = (2 + 30 * level) * s, x = roundf(left + i * step);
         float red = std::clamp((level - 0.85f) / 0.15f, 0.f, 1.f);
-        brush->SetColor({0.9f + 0.05f * red, 0.9f - 0.35f * red, 0.9f - 0.35f * red, (0.6f + 0.4f * level) * visibility});
+        D2D1_COLOR_F calm = Paint(Ink::Equalizer, 0.9f, (0.6f + 0.4f * level) * visibility), peak = Paint(Ink::Peak, 0.95f, calm.a);
+        brush->SetColor({calm.r + (peak.r - calm.r) * red, calm.g + (peak.g - calm.g) * red, calm.b + (peak.b - calm.b) * red, calm.a});
         dc->FillRectangle({x, base - height, x + barWidth, base}, brush);
     }
 
@@ -379,7 +381,8 @@ void Rings::Update(SystemStats const& stats, NetworkMeter const& network, double
     details[2] = Temperature(stats.gpuTemperature);
 }
 
-// Os quatro anéis juntos, centralizados embaixo do cartão da música, com o nome embaixo de cada um.
+// Os quatro anéis juntos, centralizados embaixo do cartão da música, com o nome embaixo de cada um: trilho e arco em
+// CorAnel, % em CorTexto e o resto em CorTextoSuave.
 void Rings::Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, ID2D1StrokeStyle* round, D2D1::Matrix3x2F const& corner,
                  CornerLayout const& layout, float centerY) {
     const wchar_t* labels[4] = {L"CPU", L"RAM", L"GPU", L"Mbps"};
@@ -387,18 +390,19 @@ void Rings::Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, ID2D1Strok
 
     for (int i = 0; i < 4; i++) {
         float cx = roundf((layout.cardLeft + layout.right) / 2 + (i - 1.5f) * (2 * r + 20 * s));
-        brush->SetColor({1, 1, 1, 0.18f});
+        brush->SetColor(Paint(Ink::Accent, 1, 0.18f));
         dc->DrawEllipse({{cx, centerY}, r, r}, brush, 3 * s);
 
-        brush->SetColor({0.95f, 0.95f, 0.95f, 0.97f});
+        brush->SetColor(Paint(Ink::Accent, 0.95f, 0.97f));
         dc->SetTransform(D2D1::Matrix3x2F::Translation(cx, centerY) * corner);
         dc->DrawGeometry(arcs[i].Get(), brush, 3 * s, round);
         dc->SetTransform(corner);
+        brush->SetColor(Paint(Ink::Text, 0.95f, 0.97f));
         dc->DrawText(values[i].c_str(), (UINT)values[i].size(), valueFont.Get(), {cx - r, centerY - 20 * s, cx + r, centerY + 4 * s}, brush);
 
-        brush->SetColor({0.82f, 0.82f, 0.82f, 0.95f});
+        brush->SetColor(Paint(Ink::Soft, 0.82f, 0.95f));
         dc->DrawText(details[i].c_str(), (UINT)details[i].size(), detailFont.Get(), {cx - r, centerY + 3 * s, cx + r, centerY + 19 * s}, brush);
-        brush->SetColor({0.69f, 0.69f, 0.69f, 0.95f});
+        brush->SetColor(Paint(Ink::Soft, 0.69f, 0.95f));
         dc->DrawText(labels[i], (UINT)wcslen(labels[i]), labelFont.Get(), {cx - r, centerY + r + 5 * s, cx + r, centerY + r + 20 * s}, brush);
     }
 }

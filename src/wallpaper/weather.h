@@ -12,6 +12,7 @@ struct Weather {
     bool day = true;
 };
 
+std::string FetchWeather(std::wstring const& latitude, std::wstring const& longitude);
 void StartWeatherService();
 int WeatherVersion();
 std::string WeatherJson();
