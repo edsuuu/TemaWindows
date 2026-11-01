@@ -305,7 +305,7 @@ void NowPlayingCard::Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, C
     DrawProgress(dc, brush, layout, visibility);
 
     const float barWidth = roundf(width / Equalizer::kBands * 0.5f), step = (width - barWidth) / (Equalizer::kBands - 1), base = top + size;
-    for (int i = 0; i < Equalizer::kBands; i++) {
+    for (int i = 0; i < Equalizer::kBands && showEqualizer; i++) {
         float level = equalizer.level[i], height = (2 + 30 * level) * s, x = roundf(left + i * step);
         float red = std::clamp((level - 0.85f) / 0.15f, 0.f, 1.f);
         D2D1_COLOR_F calm = Paint(Ink::Equalizer, 0.9f, (0.6f + 0.4f * level) * visibility), peak = Paint(Ink::Peak, 0.95f, calm.a);
@@ -381,15 +381,21 @@ void Rings::Update(SystemStats const& stats, NetworkMeter const& network, double
     details[2] = Temperature(stats.gpuTemperature);
 }
 
-// Os quatro anéis juntos, centralizados embaixo do cartão da música, com o nome embaixo de cada um: trilho e arco em
+// Quantos anéis estão ligados (AnelCpu, AnelRam, AnelGpu e AnelRede).
+int Rings::Count() const {
+    return show[0] + show[1] + show[2] + show[3];
+}
+
+// Os anéis ligados juntos, centralizados embaixo do cartão da música, com o nome embaixo de cada um: trilho e arco em
 // CorAnel, % em CorTexto e o resto em CorTextoSuave.
 void Rings::Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, ID2D1StrokeStyle* round, D2D1::Matrix3x2F const& corner,
                  CornerLayout const& layout, float centerY) {
     const wchar_t* labels[4] = {L"CPU", L"RAM", L"GPU", L"Mbps"};
     const float s = scale, r = radius;
 
-    for (int i = 0; i < 4; i++) {
-        float cx = roundf((layout.cardLeft + layout.right) / 2 + (i - 1.5f) * (2 * r + 20 * s));
+    for (int i = 0, slot = 0; i < 4; i++) {
+        if (!show[i]) continue;
+        float cx = roundf((layout.cardLeft + layout.right) / 2 + (slot++ - (Count() - 1) / 2.f) * (2 * r + 20 * s));
         brush->SetColor(Paint(Ink::Accent, 1, 0.18f));
         dc->DrawEllipse({{cx, centerY}, r, r}, brush, 3 * s);
 

@@ -3,13 +3,13 @@
 #include "wallpaper/pc_specs.h"
 #include "wallpaper/weather.h"
 #include "wallpaper/weather_icon.h"
+#include "wallpaper/widget_options.h"
 
 #include <dwrite.h>
 #include <string>
 
 struct InfoPanel {
-    bool showJson = true;
-    int weatherSide = 2;
+    WidgetOptions options;
 
     void Draw(ID2D1DeviceContext* screen, float x, float y, float width, bool lightHovered);
     float Height() const;

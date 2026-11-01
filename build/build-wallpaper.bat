@@ -5,7 +5,7 @@ setlocal
 call "%~dp0env.bat" || exit /b 1
 set "OBJ=%ROOT%\build\obj\wallpaper"
 set LIBS=d3d11.lib dxgi.lib d3dcompiler.lib d2d1.lib dwrite.lib windowscodecs.lib ole32.lib user32.lib shell32.lib dwmapi.lib ^
-   wtsapi32.lib advapi32.lib gdi32.lib windowsapp.lib shcore.lib dxguid.lib
+   wtsapi32.lib advapi32.lib gdi32.lib windowsapp.lib shcore.lib dxguid.lib mfplat.lib mfuuid.lib oleaut32.lib
 if not exist "%OBJ%\config" mkdir "%OBJ%\config"
 
 cl %CFLAGS% /c /Fo"%OBJ%/" "%SRC%\wallpaper\*.cpp" "%SRC%\common\registry.cpp" "%SRC%\common\paths.cpp" || exit /b 1

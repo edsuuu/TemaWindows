@@ -4,7 +4,7 @@
 
 float DpiScale();
 HWND FindWallpaperParent();
-bool ComputeWallpaperHidden();
+bool ComputeWallpaperHidden(bool apps);
 void SetWallpaperHidden(bool hidden);
 bool WallpaperHidden();
 void RestoreSelectionColors();

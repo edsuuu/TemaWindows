@@ -5,6 +5,7 @@
 #include "common/xaml_tree.h"
 
 #include <winrt/Windows.UI.Xaml.Automation.h>
+#include <chrono>
 #include <string_view>
 #include <unordered_set>
 
@@ -14,6 +15,25 @@ static std::unordered_set<void*> g_hooked;
 
 // Nada a preparar: o Explorer não precisa de estado por processo.
 void OnTapStarted() {}
+
+// Relê o fundo e as cores do logo a cada segundo, para o app do Wallget mudar a barra sem reiniciar o Explorer. Um
+// timer por thread do XAML (é ela que pode mexer nos elementos), criado no primeiro elemento.
+static void StartRefreshTimer() {
+    thread_local DispatcherTimer timer{nullptr};
+    if (timer) return;
+
+    timer = DispatcherTimer();
+    timer.Interval(std::chrono::seconds(1));
+    timer.Tick([](auto&&, auto&&) {
+        try {
+            RefreshBlurBackground();
+            RefreshStartLogo();
+        } catch (...) {
+            Log(L"erro ao reler a barra: %08X", winrt::to_hresult());
+        }
+    });
+    timer.Start();
+}
 
 // Aplica agora (elemento já na árvore) e de novo a cada Loaded (elemento recriado, como a caixa de pesquisa ao trocar o
 // modo), sem deixar exceção escapar: ela derrubaria o Explorer.
@@ -82,6 +102,10 @@ static void RemoveFocusRing(std::wstring_view type, InstanceHandle handle) {
 void OnElementAdded(ParentChildRelation const&, VisualElement const& element) {
     std::wstring_view type = element.Type ? element.Type : L"", name = element.Name ? element.Name : L"";
     RemoveFocusRing(type, element.Handle);
+    try {
+        StartRefreshTimer();
+    } catch (...) {
+    }
 
     if (type == L"Taskbar.TaskbarBackground" && Enabled(L"Fundo")) {
         ApplyNowAndOnLoad(FrameworkElementFromHandle(element.Handle), ApplyBlurBackground, L"fundo");

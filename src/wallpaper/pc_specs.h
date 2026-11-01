@@ -10,4 +10,5 @@ struct PcSpecs {
 };
 
 PcSpecs ReadPcSpecs();
+std::vector<std::pair<std::wstring, std::wstring>> ReadMonitorNames();
 std::vector<std::wstring> ReadMonitors();

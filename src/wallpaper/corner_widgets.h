@@ -26,6 +26,7 @@ D2D1_RECT_F MediaButtonRect(CornerLayout const& layout, int button);
 struct NowPlayingCard {
     float alpha = 0;
     bool showing = false;
+    bool showEqualizer = true;
 
     void Create(IDWriteFactory* dwrite, float scale);
     void Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowPlaying const& song, NextTrack const& next, CornerLayout const& layout,
@@ -87,6 +88,9 @@ private:
 };
 
 struct Rings {
+    bool show[4] = {true, true, true, true};
+
+    int Count() const;
     void Create(ID2D1Factory* factory, IDWriteFactory* dwrite, float scale);
     void Update(SystemStats const& stats, NetworkMeter const& network, double networkPercent);
     void Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, ID2D1StrokeStyle* round, D2D1::Matrix3x2F const& corner,

@@ -1,4 +1,5 @@
 #include "wallpaper/folder_icons.h"
+#include "common/registry.h"
 #include "common/paths.h"
 
 #include <windows.h>
@@ -38,7 +39,8 @@ static void SetDesktopFolderIcons(std::wstring const& desktop, std::wstring cons
     FindClose(find);
 }
 
-// Aplica agora e toda vez que uma pasta é criada ou renomeada na área de trabalho do usuário.
+// Aplica agora e toda vez que uma pasta é criada ou renomeada na área de trabalho do usuário, enquanto Pastas estiver
+// ligado (relido a cada 5 s; ao religar, aplica de novo). Desligar não tira o ícone das pastas que já têm.
 static void FolderIconLoop() {
     PWSTR path = nullptr;
     if (FAILED(SHGetKnownFolderPath(FOLDERID_Desktop, 0, nullptr, &path))) return;
@@ -46,12 +48,16 @@ static void FolderIconLoop() {
     CoTaskMemFree(path);
 
     HANDLE change = FindFirstChangeNotificationW(desktop.c_str(), FALSE, FILE_NOTIFY_CHANGE_DIR_NAME);
-    SetDesktopFolderIcons(desktop, icon);
     if (change == INVALID_HANDLE_VALUE) return;
 
-    while (WaitForSingleObject(change, INFINITE) == WAIT_OBJECT_0) {
-        SetDesktopFolderIcons(desktop, icon);
-        if (!FindNextChangeNotification(change)) break;
+    for (bool was = false;;) {
+        bool on = Enabled(L"Pastas");
+        if (on && !was) SetDesktopFolderIcons(desktop, icon);
+        was = on;
+
+        DWORD wait = WaitForSingleObject(change, 5000);
+        if (wait == WAIT_OBJECT_0 && on) SetDesktopFolderIcons(desktop, icon);
+        if (wait == WAIT_OBJECT_0 && !FindNextChangeNotification(change)) break;
     }
     FindCloseChangeNotification(change);
 }

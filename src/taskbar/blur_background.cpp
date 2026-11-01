@@ -6,6 +6,12 @@
 
 #include <dwmapi.h>
 #include <algorithm>
+#include <string>
+#include <vector>
+
+// Por thread do XAML, como o timer que relê (cada thread só pode mexer nos elementos dela).
+static thread_local std::vector<winrt::weak_ref<FrameworkElement>> g_backgrounds;
+static thread_local std::wstring g_look;
 
 // Esconde o preenchimento e a linha do topo da barra; se o Explorer trouxer de volta, somem de novo.
 static void HideNativeBackground(FrameworkElement const& background) {
@@ -37,7 +43,8 @@ static void EnableHostBackdrop() {
 }
 
 // BlurModo 0 = o "host backdrop" forte do acrílico; 1 = gaussiano leve, igual ao modo "blur" do TranslucentTB, de raio
-// BlurRaio px. A janela da barra é transparente, então o backdrop comum já é o que está atrás dela.
+// BlurRaio px (2 = transparente nem chega aqui). A janela da barra é transparente, então o backdrop comum já é o que
+// está atrás dela.
 static CompositionBrush BlurBrush(Compositor const& c, DWORD mode, DWORD radius) {
     if (mode != 0) return EffectOnBackdrop(c, GaussianBlur(radius / 3.f, BackdropSource()), c.CreateBackdropBrush());
 
@@ -54,21 +61,46 @@ static SpriteVisual FullSizeSprite(Compositor const& c, CompositionBrush const& 
     return sprite;
 }
 
-// Troca o fundo da barra por um desfoque do que está atrás (no lugar do TranslucentTB) com um véu preto de alfa BlurVeu
-// (0-255) por cima, para os ícones continuarem legíveis.
-void ApplyBlurBackground(FrameworkElement const& background) {
-    HideNativeBackground(background);
-    if (ElementCompositionPreview::GetElementChildVisual(background)) return;
+// Modo, raio e véu do fundo como texto, para saber quando o registro mudou.
+static std::wstring Look() {
+    return std::to_wstring(Setting(L"BlurModo", 1)) + L"," + std::to_wstring(Setting(L"BlurRaio", 9)) + L"," + std::to_wstring(Setting(L"BlurVeu", 31));
+}
 
+// Camadas do fundo: o desfoque (nenhum com BlurModo 2, transparente) e um véu preto de alfa BlurVeu (0-255) por cima,
+// para os ícones continuarem legíveis.
+static void BuildLayers(FrameworkElement const& background) {
     DWORD mode = Setting(L"BlurModo", 1), radius = Setting(L"BlurRaio", 9);
     BYTE veil = (BYTE)std::min<DWORD>(Setting(L"BlurVeu", 31), 255);
     auto c = ElementCompositionPreview::GetElementVisual(background).Compositor();
 
     auto layers = c.CreateContainerVisual();
     layers.RelativeSizeAdjustment({1, 1});
-    layers.Children().InsertAtTop(FullSizeSprite(c, BlurBrush(c, mode, radius)));
+    if (mode != 2) layers.Children().InsertAtTop(FullSizeSprite(c, BlurBrush(c, mode, radius)));
     layers.Children().InsertAtTop(FullSizeSprite(c, c.CreateColorBrush({veil, 0, 0, 0})));
 
     ElementCompositionPreview::SetElementChildVisual(background, layers);
-    Log(L"fundo com blur aplicado (modo %lu, raio %lu, véu %u)", mode, radius, veil);
+    Log(L"fundo da barra aplicado (modo %lu, raio %lu, véu %u)", mode, radius, veil);
+}
+
+// Troca o fundo da barra por um desfoque do que está atrás (no lugar do TranslucentTB), ou só o véu (transparente).
+void ApplyBlurBackground(FrameworkElement const& background) {
+    HideNativeBackground(background);
+    if (ElementCompositionPreview::GetElementChildVisual(background)) return;
+
+    BuildLayers(background);
+    g_backgrounds.push_back(winrt::make_weak(background));
+    g_look = Look();
+}
+
+// O app do Wallget mudou o fundo no registro: refaz as camadas das barras que ainda existem, sem reiniciar o Explorer.
+void RefreshBlurBackground() {
+    std::wstring look = Look();
+    if (look == g_look) return;
+
+    g_look = look;
+    std::erase_if(g_backgrounds, [](winrt::weak_ref<FrameworkElement> const& weak) {
+        auto background = weak.get();
+        if (background) BuildLayers(background);
+        return !background;
+    });
 }

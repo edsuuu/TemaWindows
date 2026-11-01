@@ -8,7 +8,9 @@
 #include "wallpaper/nbhd_theme.h"
 #include "wallpaper/palette.h"
 #include "wallpaper/timing.h"
+#include "wallpaper/video_theme.h"
 #include "wallpaper/weather.h"
+#include "wallpaper/widget_options.h"
 #include "common/paths.h"
 #include "common/registry.h"
 
@@ -44,7 +46,9 @@ struct Surface {
 struct Monitors {
     std::vector<RECT> areas;
     std::vector<RECT> works;
+    std::vector<std::wstring> devices;
     std::vector<D2D1::Matrix3x2F> corners;
+    std::vector<bool> blockOn;
     RECT primaryWork{};
     float primaryWidth = 0;
     float primaryHeight = 0;
@@ -52,17 +56,25 @@ struct Monitors {
 };
 
 // Tema escolhido em HKCU\Software\TemaBarra\FundoTema: "golden" = fundo.png ondulando ('g'); "loop" = alga <-> logo do
-// Windows ('l'); qualquer outra coisa (ou nada) = "nbhd", a tela de start retrô ('n').
+// Windows ('l'); "imagem" = a imagem de FundoImagem, parada ou ondulando com FundoOndular ('i'); "video" = o vídeo de
+// FundoVideo, mudo e em loop ('v'); qualquer outra coisa (ou nada) = "nbhd", a tela de start retrô ('n').
 static char ReadTheme() {
     std::wstring theme = SettingText(L"FundoTema", L"nbhd");
-    return !_wcsicmp(theme.c_str(), L"golden") ? 'g' : !_wcsicmp(theme.c_str(), L"loop") ? 'l' : 'n';
+    static const std::pair<const wchar_t*, char> themes[] = {{L"golden", 'g'}, {L"loop", 'l'}, {L"imagem", 'i'}, {L"video", 'v'}};
+    for (auto [name, code] : themes)
+        if (!_wcsicmp(theme.c_str(), name)) return code;
+    return 'n';
 }
 
-// Direct3D 11 com suporte a BGRA (para o Direct2D desenhar no mesmo quadro) e a fábrica DXGI do adaptador.
+// Direct3D 11 com suporte a BGRA (para o Direct2D desenhar no mesmo quadro) e a vídeo (o tema de vídeo decodifica nele;
+// sem esse suporte, abre sem) e a fábrica DXGI do adaptador.
 static bool CreateDevice(Graphics& g) {
-    if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0, D3D11_SDK_VERSION,
-                                 &g.device, nullptr, &g.context)))
-        return false;
+    bool created = false;
+    const UINT attempts[] = {D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_VIDEO_SUPPORT, D3D11_CREATE_DEVICE_BGRA_SUPPORT};
+    for (UINT flags : attempts)
+        if (!created) created = SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, nullptr, 0, D3D11_SDK_VERSION,
+                                                            &g.device, nullptr, &g.context));
+    if (!created) return false;
 
     ComPtr<IDXGIDevice> dxgiDevice;
     g.device.As(&dxgiDevice);
@@ -126,11 +138,12 @@ static bool CreateSurface(Graphics const& g, HINSTANCE instance, HWND parent, Su
 // Monitores e áreas úteis em coordenadas da nossa janela. O bloco do canto (música + indicadores) é desenhado no lugar
 // do principal e deslocado para os outros (Wallpaper::PlaceBlock põe na posição escolhida).
 static Monitors ReadMonitors(HWND parent, float scale) {
-    std::vector<MONITORINFO> infos;
+    std::vector<MONITORINFOEXW> infos;
     EnumDisplayMonitors(nullptr, nullptr, [](HMONITOR monitor, HDC, LPRECT, LPARAM p) -> BOOL {
-        MONITORINFO info{sizeof info};
+        MONITORINFOEXW info{};
+        info.cbSize = sizeof info;
         GetMonitorInfoW(monitor, &info);
-        ((std::vector<MONITORINFO>*)p)->push_back(info);
+        ((std::vector<MONITORINFOEXW>*)p)->push_back(info);
         return TRUE;
     }, (LPARAM)&infos);
 
@@ -143,6 +156,7 @@ static Monitors ReadMonitors(HWND parent, float scale) {
         MapWindowPoints(HWND_DESKTOP, parent, (POINT*)&info.rcWork, 2);
         monitors.areas.push_back(info.rcMonitor);
         monitors.works.push_back(info.rcWork);
+        monitors.devices.push_back(info.szDevice);
     }
     MapWindowPoints(HWND_DESKTOP, parent, (POINT*)&primary.rcWork, 2);
 
@@ -159,6 +173,7 @@ struct Block {
     float right;
     float bottom;
     float ringsY;
+    float panelY;
 };
 
 // Estado que atravessa as sessões (o Explorer reiniciando recria só a janela): temas, som, widgets e tempos.
@@ -178,6 +193,8 @@ private:
     GoldenTheme& golden;
     MorphTheme morph;
     NbhdTheme nbhd;
+    VideoTheme video;
+    WidgetOptions options;
     Equalizer equalizer;
     NowPlayingCard card;
     Rings rings;
@@ -194,12 +211,17 @@ private:
     float presence = 0;
     bool morphLoaded = false;
     bool dancing = false;
+    bool imageFlow = false;
     char theme = 'n';
-    int position = 2;
+    std::wstring imageFile;
+    std::wstring videoFile;
+    std::wstring imageSource;
+    std::wstring videoSource;
 
     void UpdateCapture(NowPlaying const& song, bool hidden, ULONGLONG now);
     bool CheckState(HWND parent, Surface const& surface, NowPlaying const& song, ULONGLONG now, bool& hidden);
     void UpdateWidgets(NowPlaying const& song, Monitors const& monitors, double now);
+    float RingRow(CornerLayout const& layout) const;
     void PlaceBlock(Monitors& monitors) const;
     Block LayoutBlock(Monitors const& monitors) const;
     void DrawBackground(Surface const& surface, Monitors const& monitors, Block const& block, double now);
@@ -224,18 +246,23 @@ void Wallpaper::UpdateCapture(NowPlaying const& song, bool hidden, ULONGLONG now
     }
 }
 
-// A cada meio segundo: fundo visível?, cor da seleção, tema, cores, JSON, posições do bloco e do clima, captura de som
-// e tamanho da área de trabalho. Resolução ou monitores mudaram (ou o Explorer levou o WorkerW junto): destrói a janela e devolve false para
-// montar tudo de novo.
+// A cada meio segundo: opções dos widgets, fundo visível? (FundoPausa = 0 só pausa com a tela bloqueada), cor da
+// seleção, tema (e a imagem ou o vídeo dele), cores, captura de som e tamanho da área de trabalho. Resolução ou
+// monitores mudaram (ou o Explorer levou o WorkerW junto): destrói a janela e devolve false para montar tudo de novo.
 bool Wallpaper::CheckState(HWND parent, Surface const& surface, NowPlaying const& song, ULONGLONG now, bool& hidden) {
-    hidden = ComputeWallpaperHidden();
+    options = ReadWidgetOptions();
+    hidden = ComputeWallpaperHidden(options.pause);
     SetWallpaperHidden(hidden);
     RestoreSelectionColors();
     theme = ReadTheme();
+    imageFile = SettingText(L"FundoImagem", L"");
+    videoFile = SettingText(L"FundoVideo", L"");
+    imageFlow = Setting(L"FundoOndular", 0) != 0;
+    video.Pause(hidden);
     ReloadPalette();
-    panel.showJson = Enabled(L"Json");
-    panel.weatherSide = int(Setting(L"PosicaoClima", 2) % 3);
-    position = int(Setting(L"Posicao", 2) % 9);
+    panel.options = options;
+    card.showEqualizer = options.Equalizer();
+    for (int i = 0; i < 4; i++) rings.show[i] = options.Ring(i);
     UpdateCapture(song, hidden, now);
 
     RECT current;
@@ -258,7 +285,8 @@ void Wallpaper::UpdateWidgets(NowPlaying const& song, Monitors const& monitors, 
     dancing = song.playing && song.elsewhere;
     if (dancing) equalizer.Simulate(now, dt);
     else if (card.alpha > 0 || capture) equalizer.Update(capture != nullptr, dt);
-    card.Update(g.dc.Get(), g.dwrite.Get(), song, CurrentNextTrack(), monitors.layout, dt);
+    card.Update(g.dc.Get(), g.dwrite.Get(), options.Music() ? song : NowPlaying{}, options.Next() ? CurrentNextTrack() : NextTrack{},
+                monitors.layout, dt);
     presence = std::clamp(presence + (card.showing ? 2 : -2) * dt, 0.f, 1.f);
 
     if (now - lastReading <= 1.5) return;
@@ -269,20 +297,28 @@ void Wallpaper::UpdateWidgets(NowPlaying const& song, Monitors const& monitors, 
     rings.Update(stats, network, networkPercent);
 }
 
+// Altura da linha dos anéis (com as legendas), ou 0 com todos desligados.
+float Wallpaper::RingRow(CornerLayout const& layout) const {
+    return rings.Count() ? 2 * layout.ringRadius + 24 * layout.scale : 0;
+}
+
 // Põe o bloco na posição escolhida (Posicao: 0 a 8, da esquerda para a direita e de cima para baixo; 2 = canto de
-// cima à direita), a 44 DIPs da borda na horizontal (mais o que o painel passa do bloco, com o clima à esquerda) e 36
-// na vertical. No meio e embaixo conta a altura de agora (sem música o bloco encolhe), então ele cresce e encolhe em
-// volta do ponto escolhido. Nos outros monitores vai para o mesmo ponto da área útil (canto, meio da borda ou centro).
+// cima à direita), a Margem DIPs da borda na horizontal (44 no padrão, mais o que o painel passa do bloco, com o clima à
+// esquerda) e 8 a menos na vertical. No meio e embaixo conta a altura de agora (sem música o bloco encolhe), então ele
+// cresce e encolhe em volta do ponto escolhido. Nos outros monitores vai para o mesmo ponto da área útil (canto, meio
+// da borda ou centro), menos nos de MonitoresOcultos. O tamanho (Escala) é um zoom em volta da quina do bloco que fica
+// naquele ponto, então a distância da borda não muda.
 void Wallpaper::PlaceBlock(Monitors& monitors) const {
     auto& l = monitors.layout;
-    const float s = l.scale, width = 380 * s, margin = 44 * s + panel.Overflow();
-    const int column = position % 3, row = position / 3;
+    const float s = l.scale, k = options.size / 100.f, width = 380 * s;
+    const float margin = options.margin * s + panel.Overflow() * k, vertical = std::max(options.margin - 8, 0) * s;
+    const int column = options.position % 3, row = options.position / 3;
     RECT const& work = monitors.primaryWork;
     float p = presence * presence * (3 - 2 * presence);
-    float height = p * (118 * s + card.NextRowHeight(s)) + 2 * l.ringRadius + 24 * s + panel.Height();
+    float height = p * (118 * s + card.NextRowHeight(s)) + RingRow(l) + panel.Height();
     float left = column == 0 ? work.left + margin : column == 1 ? (work.left + work.right - width) / 2 : work.right - margin - width;
 
-    l.top = row == 0 ? work.top + 36 * s : row == 1 ? (work.top + work.bottom - height) / 2 : work.bottom - 36 * s - height;
+    l.top = row == 0 ? work.top + vertical : row == 1 ? (work.top + work.bottom - height) / 2 : work.bottom - vertical - height;
     l.cardLeft = roundf(left);
     l.right = left + width;
     l.textLeft = l.cardLeft + CoverSize() + 16 * s;
@@ -292,52 +328,75 @@ void Wallpaper::PlaceBlock(Monitors& monitors) const {
                              row == 0 ? r.top : row == 1 ? (r.top + r.bottom) / 2.f : r.bottom};
     };
     D2D1_POINT_2F home = anchor(work);
+    D2D1_POINT_2F pivot{column == 0 ? l.cardLeft : column == 1 ? (l.cardLeft + l.right) / 2 : l.right,
+                        row == 0 ? l.top : row == 1 ? l.top + height / 2 : l.top + height};
     monitors.corners.clear();
-    for (RECT const& area : monitors.works) {
-        D2D1_POINT_2F there = anchor(area);
-        monitors.corners.push_back(D2D1::Matrix3x2F::Translation(roundf(there.x - home.x), roundf(there.y - home.y)));
+    monitors.blockOn.clear();
+    for (size_t i = 0; i < monitors.works.size(); i++) {
+        D2D1_POINT_2F there = anchor(monitors.works[i]);
+        monitors.corners.push_back(D2D1::Matrix3x2F::Scale(k, k, pivot) *
+                                   D2D1::Matrix3x2F::Translation(roundf(there.x - home.x), roundf(there.y - home.y)));
+        monitors.blockOn.push_back(!options.Hidden(monitors.devices[i]));
     }
 }
 
 // Retângulo do bloco do canto (cartão + anéis + painel; sem música, só anéis e painel, que sobem para o lugar do
-// cartão), para a área escura atrás dele.
+// cartão), para a área escura atrás dele, e onde ficam os anéis e o painel (que sobe para o lugar deles sem anéis).
 Block Wallpaper::LayoutBlock(Monitors const& monitors) const {
     auto const& l = monitors.layout;
     const float s = l.scale, r = l.ringRadius;
+    const int count = rings.Count();
     float a = card.alpha * card.alpha * (3 - 2 * card.alpha);
-    float ringsY = roundf(l.top + presence * presence * (3 - 2 * presence) * (118 * s + card.NextRowHeight(s)) + r + 2 * s);
-    float center = (l.cardLeft + l.right) / 2, halfWidth = 4 * r + 30 * s;
+    float rowTop = l.top + presence * presence * (3 - 2 * presence) * (118 * s + card.NextRowHeight(s));
+    float ringsY = roundf(rowTop + r + 2 * s), panelY = count ? ringsY + r + 22 * s : rowTop;
+    float center = (l.cardLeft + l.right) / 2, halfWidth = count ? count * r + (count - 1) * 10 * s : (l.right - l.cardLeft) / 2;
+    float top = count ? ringsY - r : rowTop;
 
-    return {center - halfWidth + (l.cardLeft - center + halfWidth) * a, ringsY - r + (l.top - ringsY + r) * a,
-            center + halfWidth + (l.right - center - halfWidth) * a, ringsY + r + 22 * s + panel.Height(), ringsY};
+    return {center - halfWidth + (l.cardLeft - center + halfWidth) * a, top + (l.top - top) * a,
+            center + halfWidth + (l.right - center - halfWidth) * a, panelY + panel.Height(), ringsY, panelY};
 }
 
-// Direct3D: fundo preto e, em cada monitor, a imagem inteira ondulando ("golden") ou as faixas do morph ("loop"). Cada
-// tema só mantém os recursos dele carregados.
+// Direct3D: fundo preto e, em cada monitor, a imagem inteira ("golden" ondulando, "imagem" parada ou ondulando, ou o
+// quadro do vídeo) ou as faixas do morph ("loop"), escurecidas atrás do bloco (Sombra). Cada tema só mantém os
+// recursos dele carregados; trocar a imagem ou o vídeo no registro recarrega.
 void Wallpaper::DrawBackground(Surface const& surface, Monitors const& monitors, Block const& block, double now) {
     float black[4] = {0, 0, 0, 1};
     auto* context = g.context.Get();
     context->ClearRenderTargetView(surface.target.Get(), black);
     context->OMSetRenderTargets(1, surface.target.GetAddressOf(), nullptr);
 
-    if (theme == 'g' && !golden.Loaded()) golden.Load(g.device.Get(), context, ProjectPath(L"assets\\fundo.png"));
-    if (theme != 'g') golden.Unload();
+    std::wstring image = theme == 'g' ? ProjectPath(L"assets\\fundo.png") : theme == 'i' ? imageFile : theme == 'v' ? L"*video" : L"";
+    if (image != imageSource) {
+        golden.Unload();
+        imageSource = image;
+        if (theme == 'g' || theme == 'i') golden.Load(g.device.Get(), context, image);
+    }
+    std::wstring clip = theme == 'v' ? videoFile : L"";
+    if (clip != videoSource) {
+        videoSource = clip;
+        if (clip.empty()) video.Close();
+        else video.Open(g.device.Get(), clip);
+    }
+    if (auto* frame = theme == 'v' ? video.Frame() : nullptr) golden.Use(frame, video.Aspect());
     if (theme != 'n') nbhd.Release();
     if (theme == 'l' && !morphLoaded) morphLoaded = morph.Load(g.device.Get(), ProjectPath(L"assets\\fundo-morph.bin"));
+    const float flow = theme == 'g' || (theme == 'i' && imageFlow) ? 1.f : 0.f, shadow = options.shadow / 100.f;
 
     for (size_t i = 0; i < monitors.areas.size(); i++) {
         RECT const& area = monitors.areas[i];
         auto const& corner = monitors.corners[i];
-        const float shade[4] = {block.left + corner._31, block.top + corner._32, block.right + corner._31, block.bottom + corner._32};
+        D2D1_POINT_2F a = corner.TransformPoint({block.left, block.top}), b = corner.TransformPoint({block.right, block.bottom});
+        const float away = -1e6f, shade[4] = {monitors.blockOn[i] ? a.x : away, monitors.blockOn[i] ? a.y : away, monitors.blockOn[i] ? b.x : away,
+                                              monitors.blockOn[i] ? b.y : away};
 
         if (theme == 'l' && morphLoaded) {
             D3D11_VIEWPORT viewport{0, 0, float(surface.size.right), float(surface.size.bottom), 0, 1};
             context->RSSetViewports(1, &viewport);
             morph.Update(float(fmod(now - start, double(MorphTheme::kLoopSeconds))), float(area.right - area.left), float(area.bottom - area.top),
                          float(area.left), float(area.top));
-            morph.Draw(context, float(surface.size.right), float(surface.size.bottom), shade);
-        } else if (theme == 'g' && golden.Loaded()) {
-            golden.Draw(context, area, float(fmod(now - start, 84000.0)), shade);
+            morph.Draw(context, float(surface.size.right), float(surface.size.bottom), shade, shadow);
+        } else if (theme != 'l' && theme != 'n' && golden.Loaded()) {
+            golden.Draw(context, area, float(fmod(now - start, 84000.0)), shade, flow, shadow);
         }
     }
 }
@@ -359,12 +418,13 @@ void Wallpaper::DrawOverlay(Surface const& surface, Monitors const& monitors, Bl
     }
 
     for (int i = 0; i < int(monitors.corners.size()); i++) {
+        if (!monitors.blockOn[i]) continue;
         auto const& corner = monitors.corners[i];
         dc->SetTransform(corner);
         if (a > 0) card.Draw(dc, g.brush.Get(), l, equalizer, a, HoveredMediaButton(i), PressedMediaButton(i), ZoneHovered(Zone::Title, i),
                              ZoneHovered(Zone::Artist, i));
         rings.Draw(dc, g.brush.Get(), g.round.Get(), corner, l, block.ringsY);
-        panel.Draw(dc, l.cardLeft, block.ringsY + l.ringRadius + 22 * l.scale, l.right - l.cardLeft, ZoneHovered(Zone::Light, i));
+        panel.Draw(dc, l.cardLeft, block.panelY, l.right - l.cardLeft, ZoneHovered(Zone::Light, i));
     }
 
     dc->SetTransform(D2D1::Matrix3x2F::Identity());
@@ -372,13 +432,15 @@ void Wallpaper::DrawOverlay(Surface const& surface, Monitors const& monitors, Bl
     dc->SetTarget(nullptr);
 }
 
-// O mesmo retângulo do bloco do canto em cada monitor, em coordenadas de tela.
+// O mesmo retângulo do bloco do canto em cada monitor (com o tamanho do bloco), em coordenadas de tela; vazio nos
+// monitores sem o bloco.
 static std::vector<RECT> PerMonitor(HWND parent, Monitors const& monitors, D2D1_RECT_F const& box) {
     std::vector<RECT> rects;
-    for (auto const& corner : monitors.corners) {
-        RECT r{LONG(box.left + corner._31), LONG(box.top + corner._32), LONG(box.right + corner._31), LONG(box.bottom + corner._32)};
+    for (size_t i = 0; i < monitors.corners.size(); i++) {
+        D2D1_POINT_2F a = monitors.corners[i].TransformPoint({box.left, box.top}), b = monitors.corners[i].TransformPoint({box.right, box.bottom});
+        RECT r{LONG(a.x), LONG(a.y), LONG(b.x), LONG(b.y)};
         MapWindowPoints(parent, HWND_DESKTOP, (POINT*)&r, 2);
-        rects.push_back(r);
+        rects.push_back(monitors.blockOn[i] ? r : RECT{});
     }
     return rects;
 }
@@ -408,10 +470,10 @@ void Wallpaper::RenderFrame(Surface const& surface, Monitors& monitors, NowPlayi
     WaitNextFrame(now);
 }
 
-// 60 fps enquanto o equalizador anda; senão ~30 (o movimento é lento, mais seria desperdício). O monitor é de 239 Hz,
-// então quem dita o ritmo é este timer de alta resolução (o Sleep só tem resolução de ~16 ms).
+// 60 fps enquanto o equalizador anda ou no tema de vídeo; senão ~30 (o movimento é lento, mais seria desperdício). O
+// monitor é de 239 Hz, então quem dita o ritmo é este timer de alta resolução (o Sleep só tem resolução de ~16 ms).
 void Wallpaper::WaitNextFrame(double frameStart) {
-    double frame = capture || dancing ? 1 / 60.0 : 1 / 30.0;
+    double frame = capture || dancing || theme == 'v' ? 1 / 60.0 : 1 / 30.0;
     LARGE_INTEGER due{.QuadPart = -LONGLONG(1e7 * std::max(0.001, frame - (Now() - frameStart)))};
 
     SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE);
