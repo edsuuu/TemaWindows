@@ -60,6 +60,12 @@ float NowPlayingCard::TitleMax(CornerLayout const& layout) const {
     return layout.right - layout.textLeft - (kMediaButtons * kMediaButton + 6) * layout.scale;
 }
 
+// Largura que o nome do artista pode ocupar: o resto da linha fica para a barra de progresso e os dois tempos. Sai do
+// layout a cada desenho, então mudar a Largura com a música tocando já vale.
+float NowPlayingCard::ArtistMax(CornerLayout const& layout) const {
+    return layout.right - layout.textLeft - (kProgressGap + 2 * (kTimeReserve + kTimeGap) + kProgressMin) * layout.scale;
+}
+
 // Onde o nome da música aparece (até onde vai o texto), para o clique e o hover.
 D2D1_RECT_F NowPlayingCard::TitleRect(CornerLayout const& layout) const {
     const float s = layout.scale, top = roundf(layout.top + 2 * s);
@@ -69,7 +75,7 @@ D2D1_RECT_F NowPlayingCard::TitleRect(CornerLayout const& layout) const {
 // Onde o nome do artista aparece, para o clique e o hover.
 D2D1_RECT_F NowPlayingCard::ArtistRect(CornerLayout const& layout) const {
     const float s = layout.scale, top = roundf(layout.top + 2 * s) + 28 * s;
-    return {layout.textLeft, top, layout.textLeft + std::min(artistWidth, artistMax), top + 20 * s};
+    return {layout.textLeft, top, layout.textLeft + std::min(artistWidth, ArtistMax(layout)), top + 20 * s};
 }
 
 // Fontes do título, do artista e dos ícones dos botões.
@@ -208,7 +214,6 @@ void NowPlayingCard::Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowP
     alpha = std::clamp(alpha + (showing && !changed ? 2 : -2) * dt, 0.f, 1.f);
 
     if (changed && alpha == 0) {
-        float width = layout.right - layout.textLeft;
         title = song.title;
         artist = song.artist;
         dwrite->CreateTextLayout(title.c_str(), (UINT)title.size(), titleFont.Get(), kUnbounded, 30 * layout.scale, &titleLayout);
@@ -216,7 +221,6 @@ void NowPlayingCard::Update(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, NowP
         titleSince = Now();
         dwrite->CreateTextLayout(artist.c_str(), (UINT)artist.size(), artistFont.Get(), kUnbounded, 22 * layout.scale, &artistLayout);
         artistWidth = LayoutWidth(artistLayout.Get());
-        artistMax = width - (kProgressGap + 2 * (kTimeReserve + kTimeGap) + kProgressMin) * layout.scale;
         cover = nullptr;
         coverBrush = nullptr;
     }
@@ -265,7 +269,7 @@ void NowPlayingCard::DrawButtons(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* b
 void NowPlayingCard::DrawProgress(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility) {
     if (duration <= 0) return;
 
-    const float s = layout.scale, y = roundf(layout.top + 2 * s) + 39 * s, start = roundf(layout.textLeft + std::min(artistWidth, artistMax) + kProgressGap * s);
+    const float s = layout.scale, y = roundf(layout.top + 2 * s) + 39 * s, start = roundf(layout.textLeft + std::min(artistWidth, ArtistMax(layout)) + kProgressGap * s);
     double elapsed = std::clamp(position + (playing ? std::min(Now() - readAt, 2.0) : 0), 0.0, duration);
     std::wstring elapsedText = FormatTime(elapsed);
     D2D1_RECT_F elapsedBox{start, y - 9 * s, start + totalWidth, y + 9 * s};
@@ -300,7 +304,7 @@ void NowPlayingCard::Draw(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, C
     brush->SetColor(Paint(Ink::Text, 0.95f, 0.97f * visibility));
     DrawMarquee(dc, brush, titleLayout.Get(), titleWidth, {left, top - 2 * s}, TitleMax(layout), 30 * s, s, titleSince);
     brush->SetColor(Paint(Ink::Soft, 0.78f, 0.95f * visibility));
-    DrawMarquee(dc, brush, artistLayout.Get(), artistWidth, {left, top + 28 * s}, artistMax, 22 * s, s, titleSince);
+    DrawMarquee(dc, brush, artistLayout.Get(), artistWidth, {left, top + 28 * s}, ArtistMax(layout), 22 * s, s, titleSince);
     DrawButtons(dc, brush, layout, visibility, hovered, pressed);
     DrawProgress(dc, brush, layout, visibility);
 

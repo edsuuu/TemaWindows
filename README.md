@@ -18,7 +18,7 @@ bin\            os binários e contexto\ (pacotes gerados do TemaContexto)
 assets\         fundo.png (tema golden e papel de parede estático), fundo-morph.bin (tema loop), bloqueio-alga.png, folder.ico (ícone de pasta), contexto.png (logo dos pacotes)
 cache\          cache-clima.txt (última resposta do Open-Meteo), contexto\ (lista do menu e ícones das extensões)
 logs\           <binário>.log de cada DLL
-tools\          reload-*.ps1, theme.ps1, capture.exe, capture-wallpaper.exe, effects-test.exe, folder-icon.ps1 (gera o folder.ico), hwinfo-setup.ps1 (usado pelo instalador)
+tools\          reload-*.ps1, theme.ps1, capture.exe, capture-wallpaper.exe, effects-test.exe, folder-icon.ps1 e wallget-icon.ps1 (geram o folder.ico e o wallget.ico), hwinfo-setup.ps1 (usado pelo instalador)
 ```
 
 Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin\`.
@@ -46,7 +46,8 @@ Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin
   aleatória só liga/desliga (a ordem inteligente do Spotify não passa pelos controles do Windows nem pela API). Nome da
   música e do artista sublinham no hover e, no clique, abrem a música ou o artista no Spotify (link exato com o login
   do Spotify feito; sem ele, pela busca). Cores, partes, JSON, posição (9 lugares), tamanho, monitores, cidade do clima e
-  fundo vêm do FundoConfig.
+  fundo vêm do FundoConfig. Fica na bandeja (ícones ocultos, perto do relógio): clique abre o app; o menu tem Abrir e
+  Sair.
 - **TemaContexto** — põe no menu novo do clique direito os itens que só apareciam em "Mostrar mais opções" (Git,
   Visual Studio, PhpStorm, 7-Zip, NVIDIA e o que for instalado depois) e o item "Abrir WSL" (Terminal com o PowerShell
   padrão já no WSL, na home). Lê os verbos (`shell\`) e as extensões de menu (`shellex\ContextMenuHandlers`) de
@@ -111,7 +112,7 @@ Números (DWORD) dos widgets e do fundo:
 - Partes (0 esconde): `Musica`, `Proxima`, `Equalizador`, `AnelCpu`, `AnelRam`, `AnelGpu`, `AnelRede`; o JSON inteiro
   (`Json`) e cada campo dele (`JsonUptime`, `JsonData`, `JsonLuz`, `JsonCpu`, `JsonGpu`, `JsonRam`, `JsonMonitores`).
 - `Posicao` (0 a 8, da esquerda para a direita e de cima para baixo; padrão 2, em cima à direita), `PosicaoClima` (0 à
-  esquerda do JSON, 1 em cima, 2 à direita), `Escala` (50 a 200 %), `Margem` (px da borda, padrão 44) e `Sombra`
+  esquerda do JSON, 1 em cima, 2 à direita), `Escala` (50 a 200 %), `Largura` (380 a 800 px, padrão 380), `Margem` (px da borda, padrão 44) e `Sombra`
   (0 a 100 %, padrão 75).
 - `ClimaUnidade` (1 = °F), `ClimaMaxMin` (0 esconde máxima e mínima), `FundoPausa` (0 não pausa com jogo ou tela
   cheia), `FundoOndular` (1 ondula a imagem como o golden), `IniciarComWindows` (0 = o Wallget não se põe no Run).

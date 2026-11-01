@@ -1,0 +1,3 @@
+// Ícone do FundoVivo/Wallget.exe (e da bandeja) e do FundoConfig/WallgetConfig.exe: assets\wallget.ico, gerado por
+// tools\wallget-icon.ps1.
+1 ICON "wallget.ico"

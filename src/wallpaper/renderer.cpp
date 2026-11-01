@@ -307,10 +307,11 @@ float Wallpaper::RingRow(CornerLayout const& layout) const {
 // esquerda) e 8 a menos na vertical. No meio e embaixo conta a altura de agora (sem música o bloco encolhe), então ele
 // cresce e encolhe em volta do ponto escolhido. Nos outros monitores vai para o mesmo ponto da área útil (canto, meio
 // da borda ou centro), menos nos de MonitoresOcultos. O tamanho (Escala) é um zoom em volta da quina do bloco que fica
-// naquele ponto, então a distância da borda não muda.
+// naquele ponto, então a distância da borda não muda. A Largura (380 no padrão) estica o cartão e o JSON; a capa e os
+// anéis ficam do mesmo tamanho.
 void Wallpaper::PlaceBlock(Monitors& monitors) const {
     auto& l = monitors.layout;
-    const float s = l.scale, k = options.size / 100.f, width = 380 * s;
+    const float s = l.scale, k = options.size / 100.f, width = options.width * s;
     const float margin = options.margin * s + panel.Overflow() * k, vertical = std::max(options.margin - 8, 0) * s;
     const int column = options.position % 3, row = options.position / 3;
     RECT const& work = monitors.primaryWork;
