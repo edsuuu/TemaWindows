@@ -50,7 +50,7 @@ bool SpotifyAudible() {
 // de áudio em nome do FundoVivo e DISPLAY_HIDE a tira do Mixer de Volume. Pega todo o som dessa saída, não só o do
 // Spotify: o loopback só do processo dele abria uma sessão no Mixer que não dá para esconder
 // (AUDCLNT_E_INVALID_STREAM_FLAG).
-ComPtr<IAudioCaptureClient> StartLoopbackCapture(ComPtr<IAudioClient>& client) {
+static ComPtr<IAudioCaptureClient> StartLoopbackCapture(ComPtr<IAudioClient>& client) {
     ComPtr<IMMDeviceEnumerator> enumerator;
     ComPtr<IMMDevice> device;
     ComPtr<IAudioCaptureClient> capture;
@@ -65,6 +65,21 @@ ComPtr<IAudioCaptureClient> StartLoopbackCapture(ComPtr<IAudioClient>& client) {
         FAILED(client->GetService(IID_PPV_ARGS(&capture))) || FAILED(client->Start()))
         return nullptr;
     return capture;
+}
+
+// Liga o loopback quando alguém quer o som (se falhar, tenta de novo em 10 s) e fecha quando não quer mais.
+void LoopbackCapture::Want(bool wanted, ULONGLONG now) {
+    if (wanted && !capture && now >= nextAttempt) {
+        capture = StartLoopbackCapture(client);
+        if (!capture) {
+            client = nullptr;
+            nextAttempt = now + 10000;
+        }
+    } else if (!wanted && client) {
+        client->Stop();
+        capture = nullptr;
+        client = nullptr;
+    }
 }
 
 // Guarda as amostras novas no anel das últimas 2048 (silêncio vira zero).

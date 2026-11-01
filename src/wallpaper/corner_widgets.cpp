@@ -27,15 +27,6 @@ static float LayoutWidth(IDWriteTextLayout* layout) {
     return metrics.width;
 }
 
-// Tempo da música: "0:42", "3:05" ou, passando de uma hora, "1:02:05".
-static std::wstring FormatTime(double seconds) {
-    int total = int(seconds), hours = total / 3600, minutes = total / 60 % 60, rest = total % 60;
-    wchar_t text[16];
-    if (hours) swprintf_s(text, L"%d:%02d:%02d", hours, minutes, rest);
-    else swprintf_s(text, L"%d:%02d", minutes, rest);
-    return text;
-}
-
 // Fonte de uma linha com "…" no fim quando o texto não cabe.
 static ComPtr<IDWriteTextFormat> TrimmedFont(IDWriteFactory* dwrite, const wchar_t* family, float pixels, DWRITE_FONT_WEIGHT weight) {
     auto font = SingleLineFont(dwrite, family, pixels, weight);

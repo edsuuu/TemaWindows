@@ -201,10 +201,8 @@ private:
     InfoPanel panel;
     SystemStats stats;
     NetworkMeter network;
-    ComPtr<IAudioClient> audioClient;
-    ComPtr<IAudioCaptureClient> capture;
+    LoopbackCapture loopback;
     HANDLE timer;
-    ULONGLONG nextCaptureAttempt = 0;
     double start;
     double previousFrame;
     double lastReading = -10;
@@ -233,17 +231,7 @@ private:
 
 // Captura o som só enquanto o Spotify toca neste PC e alguém vê o fundo; se falhar, tenta de novo em 10 s.
 void Wallpaper::UpdateCapture(NowPlaying const& song, bool hidden, ULONGLONG now) {
-    if (song.playing && !song.elsewhere && !hidden && !capture && now >= nextCaptureAttempt) {
-        capture = StartLoopbackCapture(audioClient);
-        if (!capture) {
-            audioClient = nullptr;
-            nextCaptureAttempt = now + 10000;
-        }
-    } else if ((!song.playing || song.elsewhere || hidden) && audioClient) {
-        audioClient->Stop();
-        capture = nullptr;
-        audioClient = nullptr;
-    }
+    loopback.Want(song.playing && !song.elsewhere && !hidden, now);
 }
 
 // A cada meio segundo: opções dos widgets, fundo visível? (FundoPausa = 0 só pausa com a tela bloqueada), cor da
@@ -281,10 +269,10 @@ void Wallpaper::UpdateWidgets(NowPlaying const& song, Monitors const& monitors, 
     float dt = std::min(float(now - previousFrame), 0.1f);
     previousFrame = now;
 
-    equalizer.Read(capture.Get());
+    equalizer.Read(loopback.capture.Get());
     dancing = song.playing && song.elsewhere;
     if (dancing) equalizer.Simulate(now, dt);
-    else if (card.alpha > 0 || capture) equalizer.Update(capture != nullptr, dt);
+    else if (card.alpha > 0 || loopback.capture) equalizer.Update(loopback.capture != nullptr, dt);
     card.Update(g.dc.Get(), g.dwrite.Get(), options.Music() ? song : NowPlaying{}, options.Next() ? CurrentNextTrack() : NextTrack{},
                 monitors.layout, dt);
     presence = std::clamp(presence + (card.showing ? 2 : -2) * dt, 0.f, 1.f);
@@ -415,7 +403,7 @@ void Wallpaper::DrawOverlay(Surface const& surface, Monitors const& monitors, Bl
 
     if (theme == 'n' && nbhd.Built()) {
         float bass = (equalizer.level[0] + equalizer.level[1] + equalizer.level[2] + equalizer.level[3]) / 4;
-        nbhd.Draw(dc, g.brush.Get(), g.round.Get(), monitors.areas, float(fmod(now - start, 84000.0)), capture != nullptr, bass);
+        nbhd.Draw(dc, g.brush.Get(), g.round.Get(), monitors.areas, float(fmod(now - start, 84000.0)), loopback.capture != nullptr, bass);
     }
 
     for (int i = 0; i < int(monitors.corners.size()); i++) {
@@ -474,7 +462,7 @@ void Wallpaper::RenderFrame(Surface const& surface, Monitors& monitors, NowPlayi
 // 60 fps enquanto o equalizador anda ou no tema de vídeo; senão ~30 (o movimento é lento, mais seria desperdício). O
 // monitor é de 239 Hz, então quem dita o ritmo é este timer de alta resolução (o Sleep só tem resolução de ~16 ms).
 void Wallpaper::WaitNextFrame(double frameStart) {
-    double frame = capture || dancing || theme == 'v' ? 1 / 60.0 : 1 / 30.0;
+    double frame = loopback.capture || dancing || theme == 'v' ? 1 / 60.0 : 1 / 30.0;
     LARGE_INTEGER due{.QuadPart = -LONGLONG(1e7 * std::max(0.001, frame - (Now() - frameStart)))};
 
     SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE);

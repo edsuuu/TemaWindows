@@ -1,6 +1,5 @@
 #include "wallpaper/media.h"
 #include "wallpaper/audio.h"
-#include "wallpaper/desktop.h"
 #include "wallpaper/timing.h"
 
 #include <shcore.h>
@@ -11,6 +10,7 @@
 #include <winrt/Windows.Media.Control.h>
 #include <winrt/Windows.Storage.Streams.h>
 #include <algorithm>
+#include <cstdio>
 #include <mutex>
 #include <thread>
 
@@ -142,9 +142,10 @@ static NowPlaying ReadSpotify(GlobalSystemMediaTransportControlsSessionManager c
     return song;
 }
 
-// Thread da mídia: lê o Spotify 1x por segundo (GlobalSystemMediaTransportControls); com o fundo oculto (jogo aberto)
-// nem pergunta. Se o gerenciador de sessões falhar, pede outro na próxima volta.
-static void MediaLoop() {
+// Thread da mídia: lê o Spotify 1x por segundo (GlobalSystemMediaTransportControls); enquanto `paused` disser que
+// ninguém vê (o fundo oculto, a barra atrás de um jogo) nem pergunta. Se o gerenciador de sessões falhar, pede outro na
+// próxima volta.
+static void MediaLoop(bool (*paused)()) {
     winrt::init_apartment();
     GlobalSystemMediaTransportControlsSessionManager manager{nullptr};
     SpotifyState state;
@@ -164,13 +165,13 @@ static void MediaLoop() {
         }
 
         do Sleep(1000);
-        while (WallpaperHidden());
+        while (paused());
     }
 }
 
 // Começa a acompanhar o Spotify numa thread à parte.
-void StartMediaWatcher() {
-    std::thread(MediaLoop).detach();
+void StartMediaWatcher(bool (*paused)()) {
+    std::thread(MediaLoop, paused).detach();
 }
 
 // Comando para a sessão do Spotify pelos controles de mídia do Windows (0 aleatória liga/desliga, 1 voltar, 2
@@ -200,6 +201,15 @@ void SendMediaCommand(int button) {
             }
         } catch (...) {}
     }).detach();
+}
+
+// Tempo da música: "0:42", "3:05" ou, passando de uma hora, "1:02:05".
+std::wstring FormatTime(double seconds) {
+    int total = int(seconds), hours = total / 3600, minutes = total / 60 % 60, rest = total % 60;
+    wchar_t text[16];
+    if (hours) swprintf_s(text, L"%d:%02d:%02d", hours, minutes, rest);
+    else swprintf_s(text, L"%d:%02d", minutes, rest);
+    return text;
 }
 
 // Última leitura do Spotify.
