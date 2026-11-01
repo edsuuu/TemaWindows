@@ -1,6 +1,7 @@
 #include "wallpaper/info_panel.h"
 #include "wallpaper/desktop.h"
 #include "wallpaper/light_switch.h"
+#include "wallpaper/palette.h"
 #include "wallpaper/text.h"
 
 #include <algorithm>
@@ -104,9 +105,21 @@ static JsonText BuildJson(PcSpecs const& specs, std::vector<std::wstring> const&
     return json;
 }
 
-// Contexto próprio do Direct2D (o do quadro está no meio do desenho quando o bitmap é refeito), fontes, cores do JSON
-// (pontuação apagada, chaves cinza médio, strings quase brancas, números brancos, true verde suave, false vermelho
-// suave), ícones e as specs, lidas uma vez.
+// Cor de cada pedaço do JSON: 0 pontuação (apagada), 1 chave (cinza médio), 2 string (quase branca), 3 número
+// (branco), 4 true (verde suave) e 5 false (vermelho suave). Pontuação, chaves e valores vêm da paleta.
+static D2D1_COLOR_F JsonColor(int piece) {
+    switch (piece) {
+    case 0: return Paint(Ink::JsonPunctuation, 0.46f, 1);
+    case 1: return Paint(Ink::JsonKey, 0.66f, 1);
+    case 2: return Paint(Ink::JsonValue, 0.9f, 1);
+    case 3: return Paint(Ink::JsonValue, 1, 1);
+    case 4: return {.56f, .82f, .56f, 1};
+    default: return {.85f, .56f, .56f, 1};
+    }
+}
+
+// Contexto próprio do Direct2D (o do quadro está no meio do desenho quando o bitmap é refeito), fontes, pincéis do
+// JSON (a cor entra no Draw, junto com a troca de paleta), ícones e as specs, lidas uma vez.
 void InfoPanel::Create(ID2D1DeviceContext* screen) {
     ComPtr<ID2D1Device> device;
     screen->GetDevice(&device);
@@ -117,9 +130,7 @@ void InfoPanel::Create(ID2D1DeviceContext* screen) {
     scale = DpiScale();
 
     dc->CreateSolidColorBrush({1, 1, 1, 1}, &brush);
-    const D2D1_COLOR_F colors[6] = {{.46f, .46f, .46f, 1}, {.66f, .66f, .66f, 1}, {.90f, .90f, .90f, 1},
-                                    {1, 1, 1, 1},          {.56f, .82f, .56f, 1}, {.85f, .56f, .56f, 1}};
-    for (int i = 0; i < 6; i++) dc->CreateSolidColorBrush(colors[i], &jsonColors[i]);
+    for (auto& color : jsonColors) dc->CreateSolidColorBrush({1, 1, 1, 1}, &color);
 
     temperatureFont = SingleLineFont(dwrite.Get(), L"Segoe UI Variable Display", 34 * scale, DWRITE_FONT_WEIGHT_SEMI_LIGHT);
     skyFont = SingleLineFont(dwrite.Get(), L"Segoe UI Variable Text", 13.5f * scale);
@@ -138,9 +149,9 @@ void InfoPanel::Create(ID2D1DeviceContext* screen) {
     specs = ReadPcSpecs();
 }
 
-// Um texto em cinza `gray`, centralizado na caixa.
-void InfoPanel::PaintText(std::wstring const& text, IDWriteTextFormat* font, D2D1_RECT_F const& box, float gray, float alpha) {
-    brush->SetColor({gray, gray, gray, alpha});
+// Um texto na cor `color`, centralizado na caixa.
+void InfoPanel::PaintText(std::wstring const& text, IDWriteTextFormat* font, D2D1_RECT_F const& box, D2D1_COLOR_F color) {
+    brush->SetColor(color);
     dc->DrawText(text.c_str(), (UINT)text.size(), font, box, brush.Get());
 }
 
@@ -153,16 +164,18 @@ void InfoPanel::DrawWeatherColumn(float center, float halfWidth, float top, std:
 
     DrawWeatherIcon(dc.Get(), brush.Get(), round.Get(), icons, {center - kIconSize * scale / 2, top}, kIconSize * scale, scale, weather.code,
                     weather.day);
-    PaintText(temperature, temperatureFont.Get(), {left, y, right, y + kTemperatureRow * scale}, 0.95f, 0.97f);
+    PaintText(temperature, temperatureFont.Get(), {left, y, right, y + kTemperatureRow * scale}, Paint(Ink::Text, 0.95f, 0.97f));
     y += kTemperatureRow * scale;
-    PaintText(sky, skyFont.Get(), {left, y, right, y + kSkyRow * scale}, 0.78f, 0.95f);
+    PaintText(sky, skyFont.Get(), {left, y, right, y + kSkyRow * scale}, Paint(Ink::Soft, 0.78f, 0.95f));
     y += kSkyRow * scale;
-    PaintText(range, rangeFont.Get(), {left, y, right, y + kRangeRow * scale}, 0.69f, 0.95f);
+    PaintText(range, rangeFont.Get(), {left, y, right, y + kRangeRow * scale}, Paint(Ink::Soft, 0.69f, 0.95f));
 }
 
 // 1x por segundo: dados novos (monitores 1x por minuto, para pegar troca de resolução ou de Hz) e, se o texto mudou, o
-// bitmap do bloco (largura = a do bloco do canto). O clima fica em coluna logo à direita das linhas do JSON que estão
-// ao lado dele, centralizado na altura do JSON; JSON + clima ficam centralizados no bloco, embaixo dos anéis.
+// bitmap do bloco (largura = a do bloco do canto). O clima é uma coluna, conforme weatherSide: 2 = logo à direita das
+// linhas do JSON que estão ao lado dele, centralizado na altura do JSON; 0 = à esquerda do JSON; 1 = em cima dele,
+// centralizado. JSON + clima ficam centralizados no bloco, embaixo dos anéis. Com o JSON desligado (showJson), sobra
+// só o clima, na esquerda, no meio ou na direita do bloco.
 void InfoPanel::Render(SYSTEMTIME const& now, int width, int dots) {
     if (WeatherVersion() != weatherVersion) {
         weatherVersion = WeatherVersion();
@@ -172,56 +185,78 @@ void InfoPanel::Render(SYSTEMTIME const& now, int width, int dots) {
     if (monitors.empty() || now.wSecond == 0) monitors = ReadMonitors();
 
     bool hasWeather = !std::isnan(weather.temperature) && weather.code >= 0;
-    int light = LightState();
-    JsonText json = BuildJson(specs, monitors, now, GetTickCount64() / 60000, light, dots);
+    int light = showJson ? LightState() : -1;
+    JsonText json = showJson ? BuildJson(specs, monitors, now, GetTickCount64() / 60000, light, dots) : JsonText{};
     std::wstring temperature = hasWeather ? Format(L"%.0f°", weather.temperature) : L"";
     std::wstring sky = hasWeather ? SkyText(weather.code) : L"";
     std::wstring range = hasWeather && !std::isnan(weather.maximum) ? Format(L"máx %.0f°  ·  mín %.0f°", weather.maximum, weather.minimum) : L"";
-    std::wstring newKey = json.text + temperature + sky + range + std::to_wstring(weather.code * 2 + weather.day) + std::to_wstring(width);
+    std::wstring newKey = json.text + temperature + sky + range + std::to_wstring(weather.code * 2 + weather.day) + std::to_wstring(width) +
+                          std::to_wstring(weatherSide);
     if (bitmap && newKey == key) return;
     key = newKey;
+    blockWidth = width;
 
     int lines = int(std::count(json.text.begin(), json.text.end(), L'\n')) + 1;
-    float jsonHeight = lines * kLineHeight * scale;
+    float jsonHeight = json.text.empty() ? 0 : lines * kLineHeight * scale;
     ComPtr<IDWriteTextLayout> layout;
     DWRITE_TEXT_METRICS metrics{};
     dwrite->CreateTextLayout(json.text.c_str(), (UINT)json.text.size(), codeFont.Get(), float(width), jsonHeight, &layout);
     for (auto [start, length, color] : json.runs) layout->SetDrawingEffect(jsonColors[color].Get(), {start, length});
     layout->GetMetrics(&metrics);
 
-    float columnHeight = hasWeather ? (kIconSize + kTemperatureRow + kSkyRow + kRangeRow) * scale : 0;
-    int height = int(std::max(jsonHeight, columnHeight));
-    if (!bitmap || bitmapWidth != width || bitmapHeight != height) {
-        D2D1_BITMAP_PROPERTIES1 properties{{DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED}, 96, 96, D2D1_BITMAP_OPTIONS_TARGET};
+    float columnHeight = hasWeather ? (kIconSize + kTemperatureRow + kSkyRow + kRangeRow) * scale : 0, gap = kWeatherGap * scale;
+    bool alone = json.text.empty() || !hasWeather, above = !alone && weatherSide == 1;
+    int height = int(above ? columnHeight + gap + jsonHeight : std::max(jsonHeight, columnHeight));
+    if (height <= 0) {
         bitmap = nullptr;
-        dc->CreateBitmap({UINT(width), UINT(height)}, nullptr, 0, &properties, &bitmap);
-        bitmapWidth = width;
-        bitmapHeight = height;
+        return;
     }
-
-    float columnTop = std::round((height - columnHeight) / 2);
+    float columnTop = above ? 0 : std::round((height - columnHeight) / 2), jsonY = above ? columnHeight + gap : 0;
     float widest = hasWeather ? std::max({kIconSize * scale, TextWidth(dwrite.Get(), temperature, temperatureFont.Get()),
                                           TextWidth(dwrite.Get(), sky, skyFont.Get()), TextWidth(dwrite.Get(), range, rangeFont.Get())})
                               : 0;
-    float beside = WidthBeside(json.text, kLineHeight * scale, charWidth, columnTop, columnTop + columnHeight);
-    float columnLeft = hasWeather ? beside + kWeatherGap * scale : 0;
-    float x = std::round((width - std::max(metrics.width, columnLeft + widest)) / 2);
+    bool right = !alone && !above && weatherSide == 2;
+    float columnLeft = right ? WidthBeside(json.text, kLineHeight * scale, charWidth, columnTop, columnTop + columnHeight) + gap : 0;
+    float content = right ? std::max(metrics.width, columnLeft + widest) : alone || above ? std::max(metrics.width, widest) : widest + gap + metrics.width;
+    int full = std::max(width, int(std::ceil(content)));
+    if (!bitmap || bitmapWidth != full || bitmapHeight != height) {
+        D2D1_BITMAP_PROPERTIES1 properties{{DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED}, 96, 96, D2D1_BITMAP_OPTIONS_TARGET};
+        bitmap = nullptr;
+        dc->CreateBitmap({UINT(full), UINT(height)}, nullptr, 0, &properties, &bitmap);
+        bitmapWidth = full;
+        bitmapHeight = height;
+    }
+
+    float x = std::round((full - (alone || above ? metrics.width : content)) / 2), center;
+    if (alone || above) {
+        center = above || weatherSide == 1 ? full / 2.f : weatherSide == 0 ? widest / 2 : full - widest / 2;
+    } else if (right) {
+        center = x + columnLeft + widest / 2;
+    } else {
+        center = x + widest / 2;
+        x += widest + gap;
+    }
     lightLine = {};
     if (light >= 0) {
         size_t start = json.text.find(L'\n', json.text.find(L'\n') + 1) + 1, value = json.text.find(L": ", start) + 2 - start;
         float lh = kLineHeight * scale, pad = 4 * scale;
-        lightLine = {x + value * charWidth - pad, 2 * lh, x + (value + (dots ? dots : light ? 4 : 5)) * charWidth + pad, 3 * lh};
+        lightLine = {x + value * charWidth - pad, jsonY + 2 * lh, x + (value + (dots ? dots : light ? 4 : 5)) * charWidth + pad, jsonY + 3 * lh};
     }
 
     dc->SetTarget(bitmap.Get());
     dc->BeginDraw();
     dc->Clear({0, 0, 0, 0});
     dc->SetTransform(D2D1::Matrix3x2F::Identity());
-    dc->DrawTextLayout({x, 0}, layout.Get(), jsonColors[0].Get());
-    if (hasWeather) DrawWeatherColumn(std::round(x + columnLeft + widest / 2), widest / 2 + 1, columnTop, temperature, sky, range);
+    dc->DrawTextLayout({x, jsonY}, layout.Get(), jsonColors[0].Get());
+    if (hasWeather) DrawWeatherColumn(std::round(center), widest / 2 + 1, columnTop, temperature, sky, range);
 
     dc->EndDraw();
     dc->SetTarget(nullptr);
+}
+
+// Quanto o painel passa da largura do bloco de cada lado (só com o clima à esquerda do JSON).
+float InfoPanel::Overflow() const {
+    return bitmap ? std::max(0.f, (bitmapWidth - blockWidth) / 2.f) : 0;
 }
 
 // Quanto o bloco do canto cresce embaixo das legendas dos anéis (a área escura atrás estica até aqui).
@@ -231,23 +266,29 @@ float InfoPanel::Height() const {
 
 // Desenha embaixo dos anéis (a transformação do monitor já está posta): x = borda esquerda da capa da música, y =
 // embaixo das legendas, width = largura do bloco do canto. Clima + JSON são um bitmap refeito só quando o texto muda
-// (1x por segundo, pelo relógio, e a cada pontinho do carregando da luz); por quadro é um DrawBitmap por monitor. Com
-// o mouse em cima do valor da luz, ele ganha um fundo claro arredondado; o retângulo dele fica guardado para a janela
-// de clique.
+// (1x por segundo, pelo relógio, e a cada pontinho do carregando da luz) ou a paleta muda; por quadro é um DrawBitmap
+// por monitor, centralizado no bloco (com o clima à esquerda ele pode passar um pouco da largura). Com o mouse em cima
+// do valor da luz, ele ganha um fundo claro arredondado; o retângulo dele fica guardado para a janela de clique.
 void InfoPanel::Draw(ID2D1DeviceContext* screen, float x, float y, float width, bool lightHovered) {
     if (!dc) Create(screen);
 
     SYSTEMTIME now;
     GetLocalTime(&now);
     int dots = LightPending() ? int(GetTickCount64() / 350 % 3) + 1 : 0;
-    if (now.wSecond != second || bitmapWidth != int(width) || dots != lastDots) {
+    if (palette != PaletteVersion()) {
+        palette = PaletteVersion();
+        for (int i = 0; i < 6; i++) jsonColors[i]->SetColor(JsonColor(i));
+        key.clear();
+        second = -1;
+    }
+    if (now.wSecond != second || blockWidth != int(width) || dots != lastDots) {
         second = now.wSecond;
         lastDots = dots;
         Render(now, int(width), dots);
     }
     if (!bitmap) return;
 
-    x = roundf(x);
+    x = roundf(x + (width - bitmapWidth) / 2);
     y = roundf(y + kGapBelowRings * scale);
     lightRect = lightLine.right > lightLine.left
                     ? D2D1_RECT_F{x + lightLine.left, y + lightLine.top, x + lightLine.right, y + lightLine.bottom}
