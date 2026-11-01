@@ -356,15 +356,13 @@ static double FreeWidth(FrameworkElement const& grid) {
     return left;
 }
 
-// A cada 250 ms: o player aparece na barra do monitor principal quando ele está coberto por uma janela maximizada e o
-// Spotify tem música, tocando ou pausada (pausada, a onda vira a linha parada), se couber antes do Iniciar (sem espaço
-// para a onda, só ela sai). Sem poder aparecer (Player = 0, jogo em tela cheia, nada maximizado) nem lê o Spotify. O
-// som é capturado só com a onda na tela e a música tocando neste PC; tocando em outro aparelho, a onda dança sozinha.
+// A cada 250 ms: o player aparece na barra do monitor principal sempre que o Spotify tem música, tocando ou pausada
+// (pausada, a onda vira a linha parada), se couber antes do Iniciar (sem espaço para a onda, só ela sai). Sem poder
+// aparecer (Player = 0, jogo em tela cheia) nem lê o Spotify. O som é capturado só com a onda na tela e a música
+// tocando neste PC; tocando em outro aparelho, a onda dança sozinha.
 static void Tick() {
     auto primary = PrimaryRoot();
-    auto covered = CoveredMonitors();
-    bool idle = !g_enabled || !primary || FullScreenApp() ||
-                std::find(covered.begin(), covered.end(), MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY)) == covered.end();
+    bool idle = !g_enabled || !primary || FullScreenApp();
     g_idle = idle;
     NowPlaying song = CurrentMedia();
     bool show = !idle && !song.title.empty();

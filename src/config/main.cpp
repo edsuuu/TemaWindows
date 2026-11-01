@@ -503,7 +503,7 @@ static void Arrange(HWND window) {
             for (int i = 0; i < 3; i++) ink(kFirstLogoInk + i, names[i]);
         }
         heading(L"Player do Spotify");
-        row(L"Na barra, com janela maximizada", kPlayer);
+        row(L"Na barra de tarefas", kPlayer);
         if (player) wide(kFirstWave, 2);
         break;
     case 7:
