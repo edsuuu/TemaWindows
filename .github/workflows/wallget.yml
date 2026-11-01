@@ -1,20 +1,38 @@
-# Wallget: compila o papel de parede, o app e a barra e gera o instalador (build\build-installer.bat) em todo push e
-# PR, com o Wallget-Setup.exe nos artefatos da execução. No main, se a versão do installer.iss ainda não tem release,
-# publica a wallget-v<versão> com ele.
+# Wallget: compila o papel de parede, o app e a barra e gera o instalador (build\build-installer.bat) a cada push e
+# PR que mexe neles, com o Wallget-Setup.exe nos artefatos da execução. No main, se a versão do installer.iss ainda não
+# tem release, publica a wallget-v<versão> com ele (uma execução por vez, para duas não criarem a mesma).
 name: Wallget
 
 on:
   push:
     branches: [main]
+    paths:
+      - src/wallpaper/**
+      - src/config/**
+      - src/taskbar/**
+      - src/common/**
+      - build/**
+      - assets/**
+      - .github/workflows/wallget.yml
   pull_request:
+    paths:
+      - src/wallpaper/**
+      - src/config/**
+      - src/taskbar/**
+      - src/common/**
+      - build/**
+      - assets/**
+      - .github/workflows/wallget.yml
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency: wallget-${{ github.ref }}
+
 jobs:
   instalador:
-    runs-on: windows-latest
+    runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
 
@@ -22,7 +40,7 @@ jobs:
         shell: pwsh
         run: |
           $version = (Select-String build/installer.iss '#define Version "(.+)"').Matches[0].Groups[1].Value
-          if (-not (Select-String src/config/main.cpp -SimpleMatch "Wallget $version ")) { throw "O título do app não diz Wallget $version (src/config/main.cpp)" }
+          if (-not (Select-String src/config/main.cpp -SimpleMatch "Wallget $version · ")) { throw "O título do app não diz Wallget $version (src/config/main.cpp)" }
           "VERSION=$version" >> $env:GITHUB_ENV
 
       - name: Inno Setup

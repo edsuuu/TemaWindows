@@ -69,9 +69,10 @@ Autostart: `HKCU\...\Run` (`TemaBarra`, `TemaMenus`, `TemaJanelas`, `TemaContext
 ## Wallget (instalador dos widgets)
 
 `build\build-installer.bat` compila o FundoVivo, o FundoConfig e a TemaBarra.dll e gera `bin\Wallget-Setup.exe` (Inno
-Setup 6: `winget install JRSoftware.InnoSetup --scope user`). O CI (`.github/workflows/wallget.yml`) roda o mesmo em
-todo push e PR e deixa o instalador nos artefatos da execução; no `main`, versão nova no `#define Version` do
-`installer.iss` (e no título do app) vira a release `wallget-v<versão>` com o `Wallget-Setup.exe`. Instala por usuário em `%LOCALAPPDATA%\Programs\Wallget` como
+Setup 6: `winget install JRSoftware.InnoSetup --scope user`). O CI (`.github/workflows/wallget.yml`) roda o mesmo a
+cada push e PR que mexe no Wallget e deixa o instalador nos artefatos da execução; no `main`, versão nova no
+`#define Version` do `installer.iss` (e no título do app) vira a release `wallget-v<versão>` com o `Wallget-Setup.exe`.
+Instala por usuário em `%LOCALAPPDATA%\Programs\Wallget` como
 `Wallget.exe` (o papel de parede, no `HKCU\...\Run` já na primeira vez que abre, a não ser que o app desligue) e
 `WallgetConfig.exe` (atalho "Wallget" no Iniciar). A opção "Barra de tarefas" (desmarcada) instala também a
 `TemaBarra.dll`, se não houver outra iniciando com o Windows; numa atualização a DLL nova entra no próximo login. Se faltar o
