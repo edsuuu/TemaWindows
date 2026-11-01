@@ -45,12 +45,13 @@ Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin
   pesquisa e no painel dos ícones ocultos (^), com o hover dos ícones das pontas acompanhando a curva, sem anel de
   foco. Injeta no Explorer via `InitializeXamlDiagnosticsEx` e reinjeta quando ele reinicia. Relê o fundo e as cores do
   logo a cada segundo, então o app do Wallget muda a barra sem reiniciar o Explorer. Player do Spotify à esquerda da
-  barra do monitor principal sempre que o Spotify tem música: capa, nome com aleatória ⏮ ⏯ ⏭, artista com o tempo e a
+  barra de cada monitor sempre que o Spotify tem música: capa, nome com aleatória ⏮ ⏯ ⏭, artista com o tempo e a
   barra de progresso, e a onda do som (o mesmo loopback e equalizador do FundoVivo), nas cores do tema do Wallget e
-  vermelha nos picos. A onda sai do centro ou cresce de baixo para cima como no cartão (escolha no app); pausada, fica
-  parada e o player continua. Some com o Spotify fechado, com jogo ou app em tela cheia e quando não cabe antes do
-  Iniciar (sem espaço para a onda, só ela sai). É XAML montado dentro da barra, no `Grid` da `TaskbarFrame`; a barra
-  principal é a ilha XAML dentro da `Shell_TrayWnd`.
+  vermelha nos picos. A onda sai do centro ou cresce de baixo para cima como no cartão, com força ajustável (escolhas
+  no app); pausada, fica parada e o player continua. Sem espaço antes do Iniciar, primeiro sai a onda e depois fica a
+  versão compacta (capa, nome, artista e tocar/pausar). Some com o Spotify fechado e com jogo ou app em tela cheia.
+  É XAML montado dentro da barra, no `Grid` da `TaskbarFrame`; a mãozinha dos botões vem de um subclass na janela da
+  ilha XAML de cada barra.
 - **TemaMenus** — vidro liso no Iniciar, pesquisa, Configurações Rápidas e notificações; Iniciar no estilo do conceito
   (barra lateral com os botões nativos de conta/energia, Início/Apps/Criar, pastas na largura toda, lupa com degradê).
   Nas Configurações Rápidas: barra de tempo da música no cartão de mídia (só leitura, atualiza só com o painel aberto),
@@ -141,8 +142,9 @@ Números (DWORD) dos widgets e do fundo:
 - `ClimaUnidade` (1 = °F), `ClimaMaxMin` (0 esconde máxima e mínima), `FundoPausa` (0 não pausa com jogo ou tela
   cheia), `FundoOndular` (1 ondula a imagem como o golden), `IniciarComWindows` (0 = o Wallget não se põe no Run).
 - Barra: `BlurModo` (0 acrílico, 1 blur, 2 transparente), `BlurRaio` (px do blur, padrão 9) e `BlurVeu` (0 a 255,
-  véu preto por cima; padrão 31). `Player` (0 tira o player do Spotify da barra) e `PlayerOnda` (0 onda saindo do
-  centro, 1 de baixo para cima), os dois na hora.
+  véu preto por cima; padrão 31). `Player` (0 tira o player do Spotify da barra), `PlayerOnda` (0 onda saindo do
+  centro, 1 de baixo para cima) e `PlayerOndaForca` (30 a 100%, padrão 70; menos força, menos picos vermelhos), todos
+  na hora.
 
 ## Compilar e recarregar
 
