@@ -286,7 +286,10 @@ void InfoPanel::Draw(ID2D1DeviceContext* screen, float x, float y, float width, 
         lastDots = dots;
         Render(now, int(width), dots);
     }
-    if (!bitmap) return;
+    if (!bitmap) {
+        lightRect = {};
+        return;
+    }
 
     x = roundf(x + (width - bitmapWidth) / 2);
     y = roundf(y + kGapBelowRings * scale);
