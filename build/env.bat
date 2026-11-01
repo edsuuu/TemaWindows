@@ -1,5 +1,7 @@
-@rem Ambiente comum dos builds: compilador x64 do VS 2022 Build Tools, pastas do projeto e opções do cl.
-call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >nul || exit /b 1
+@rem Ambiente comum dos builds: compilador x64 do Visual Studio achado pelo vswhere (aqui o Build Tools, no CI o do
+@rem runner), pastas do projeto e opções do cl.
+for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSDIR=%%i"
+call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" >nul || exit /b 1
 for %%i in ("%~dp0..") do set "ROOT=%%~fi"
 set "SRC=%ROOT%\src"
 set "BIN=%ROOT%\bin"
