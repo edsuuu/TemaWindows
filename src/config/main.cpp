@@ -50,8 +50,8 @@ constexpr int kSize = 540;
 constexpr int kMarginStep = 543;
 constexpr int kShadow = 546;
 constexpr int kBlurRadius = 549;
-constexpr int kWidth = 555;
 constexpr int kVeil = 552;
+constexpr int kWidth = 555;
 constexpr int kFirstMonitor = 560;
 constexpr int kFirstTheme = 570;
 constexpr int kPickImage = 575;
@@ -1021,12 +1021,18 @@ static void LoadSettings() {
 
 // FundoConfig.exe (WallgetConfig.exe no instalador): configura os widgets do papel de parede, o fundo e a barra de
 // tarefas, com uma prévia ao lado; as mudanças aparecem na hora e só ficam com o Salvar (fechar sem salvar desfaz).
+// Uma janela só: aberto de novo (pela bandeja ou pelo Iniciar), só traz a aberta para a frente. Liga o papel de parede
+// junto, se ele saiu pela bandeja (já rodando, a cópia nova sai na hora).
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
-    if (HWND open = FindWindowW(L"FundoConfig", nullptr)) {  // já aberto (pela bandeja ou pelo Iniciar): só traz para a frente
-        ShowWindow(open, IsIconic(open) ? SW_RESTORE : SW_SHOW);
-        SetForegroundWindow(open);
+    CreateMutexW(nullptr, TRUE, L"Local\\FundoConfig");
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        if (HWND open = FindWindowW(L"FundoConfig", nullptr)) {
+            ShowWindow(open, IsIconic(open) ? SW_RESTORE : SW_SHOW);
+            SetForegroundWindow(open);
+        }
         return 0;
     }
+    ShellExecuteW(nullptr, nullptr, WallpaperExe().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     scale = GetDpiForSystem() / 96.f;
