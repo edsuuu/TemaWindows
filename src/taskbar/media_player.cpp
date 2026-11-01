@@ -331,7 +331,7 @@ static bool OverButton() {
     return false;
 }
 
-// Janela da ilha XAML da barra principal: o XAML da barra não tem cursor por elemento e a ilha põe a seta a cada
+// Janela da ilha XAML de cada barra: o XAML da barra não tem cursor por elemento e a ilha põe a seta a cada
 // WM_SETCURSOR; antes dela, com o ponteiro num botão do player, fica a mãozinha. Exceção não pode sair daqui (derrubaria
 // o Explorer).
 static LRESULT CALLBACK CursorProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR) {
@@ -345,31 +345,23 @@ static LRESULT CALLBACK CursorProc(HWND window, UINT message, WPARAM wParam, LPA
     return DefSubclassProc(window, message, wParam, lParam);
 }
 
-// XamlRoot da barra do monitor principal. Cada barra é uma ilha XAML numa janela própria: a do principal fica dentro
-// da Shell_TrayWnd, as outras na Shell_SecondaryTrayWnd. A ilha só ganha janela depois de entrar na barra, por isso a
-// procura é a cada volta; ilha fechada ou com a janela destruída (a barra foi recriada) sai da lista. A janela da
-// principal ganha o CursorProc (instalar de novo só atualiza o que já está lá).
-static winrt::Windows::UI::Xaml::XamlRoot PrimaryRoot() {
-    winrt::Windows::UI::Xaml::XamlRoot primary{nullptr};
-    std::erase_if(g_islands, [&](DesktopWindowXamlSource const& island) {
+// Cada barra é uma ilha XAML numa janela própria, e cada janela ganha o CursorProc (instalar de novo só atualiza o que
+// já está lá). A ilha só ganha janela depois de entrar na barra, por isso a procura é a cada volta; ilha fechada
+// (Content lança exceção) ou com a janela destruída (a barra foi recriada) sai da lista.
+static void HookIslands() {
+    std::erase_if(g_islands, [](DesktopWindowXamlSource const& island) {
         try {
-            auto content = island.Content();
+            (void)island.Content();
             HWND window = nullptr;
-            wchar_t owner[64] = {};
             if (FAILED(island.as<IDesktopWindowXamlSourceNative>()->get_WindowHandle(&window)) || !window) return false;
             if (!IsWindow(window)) return true;
 
-            GetClassNameW(GetAncestor(window, GA_ROOT), owner, 64);
-            if (content && !wcscmp(owner, L"Shell_TrayWnd")) {
-                primary = content.XamlRoot();
-                SetWindowSubclass(window, CursorProc, 1, 0);
-            }
+            SetWindowSubclass(window, CursorProc, 1, 0);
             return false;
         } catch (...) {
             return true;
         }
     });
-    return primary;
 }
 
 // Espaço livre à esquerda dos botões da barra (até o Iniciar, o primeiro deles), em DIPs. Sem achar os botões, sobra
@@ -389,13 +381,13 @@ static double FreeWidth(FrameworkElement const& grid) {
     return left;
 }
 
-// A cada 250 ms: o player aparece na barra do monitor principal sempre que o Spotify tem música, tocando ou pausada
+// A cada 250 ms: o player aparece na barra de cada monitor sempre que o Spotify tem música, tocando ou pausada
 // (pausada, a onda vira a linha parada), se couber antes do Iniciar (sem espaço para a onda, só ela sai). Sem poder
-// aparecer (Player = 0, jogo em tela cheia) nem lê o Spotify. O som é capturado só com a onda na tela e a música
+// aparecer (Player = 0, jogo em tela cheia) nem lê o Spotify. O som é capturado só com alguma onda na tela e a música
 // tocando neste PC; tocando em outro aparelho, a onda dança sozinha.
 static void Tick() {
-    auto primary = PrimaryRoot();
-    bool idle = !g_enabled || !primary || FullScreenApp();
+    HookIslands();
+    bool idle = !g_enabled || FullScreenApp();
     g_idle = idle;
     NowPlaying song = CurrentMedia();
     bool show = !idle && !song.title.empty();
@@ -407,7 +399,7 @@ static void Tick() {
         return p->gone;
     });
     for (auto const& p : g_players) {
-        double room = show && p->root.XamlRoot() == primary ? FreeWidth(ParentOf(p->root)) - kRoomGap : 0;
+        double room = show ? FreeWidth(ParentOf(p->root)) - kRoomGap : 0;
         p->wave.Visibility(room >= full ? Visibility::Visible : Visibility::Collapsed);
         p->root.Visibility(room >= kShortWidth ? Visibility::Visible : Visibility::Collapsed);
         if (room >= kShortWidth) ShowSong(*p, song, now);
@@ -515,8 +507,7 @@ void AddMediaPlayer(FrameworkElement const& frame) {
     StartPlayerTimers();
 }
 
-// Guarda a ilha XAML (DesktopWindowXamlSource) de cada barra, para achar a do monitor principal, onde o player
-// aparece.
+// Guarda a ilha XAML (DesktopWindowXamlSource) de cada barra, para a janela dela ganhar a mãozinha dos botões.
 void AddTaskbarIsland(winrt::Windows::Foundation::IInspectable const& object) {
     if (auto island = object.try_as<DesktopWindowXamlSource>()) g_islands.push_back(island);
 }
