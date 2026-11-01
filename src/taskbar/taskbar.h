@@ -10,3 +10,5 @@ void HookTaskButtons(FrameworkElement const& list);
 void MirrorRunningIndicator(FrameworkElement const& original);
 void ApplySearchGlass(Controls::Border const& box);
 void ApplyOverflowGlass(Controls::Border const& border);
+void AddMediaPlayer(FrameworkElement const& frame);
+void MarkPrimaryTaskbar(winrt::Windows::Foundation::IInspectable const& object);

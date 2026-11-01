@@ -98,7 +98,8 @@ static void RemoveFocusRing(std::wstring_view type, InstanceHandle handle) {
 }
 
 // Cada elemento novo da árvore XAML da barra: fundo com blur e botão "mostrar área de trabalho" invisível (continua
-// clicável) com Fundo; vidro no painel dos ícones ocultos e na caixa de pesquisa com Vidro; e os ícones.
+// clicável) com Fundo; vidro no painel dos ícones ocultos e na caixa de pesquisa com Vidro; o player do Spotify com
+// Player (e a ilha XAML de cada barra, para saber a do monitor principal, onde ele aparece); e os ícones.
 void OnElementAdded(ParentChildRelation const&, VisualElement const& element) {
     std::wstring_view type = element.Type ? element.Type : L"", name = element.Name ? element.Name : L"";
     RemoveFocusRing(type, element.Handle);
@@ -115,6 +116,10 @@ void OnElementAdded(ParentChildRelation const&, VisualElement const& element) {
         ApplyToBorder(element.Handle, ApplyOverflowGlass, L"vidro dos ícones ocultos");
     } else if (name == L"BackgroundElement" && Enabled(L"Vidro")) {
         ApplyToBorder(element.Handle, ApplySearchGlassIfSearchBox, L"vidro da pesquisa");
+    } else if (type == L"Taskbar.TaskbarFrame" && Enabled(L"Player")) {
+        ApplyNowAndOnLoad(FrameworkElementFromHandle(element.Handle), AddMediaPlayer, L"player");
+    } else if (type == L"Windows.UI.Xaml.Hosting.DesktopWindowXamlSource") {
+        MarkPrimaryTaskbar(ElementFromHandle(element.Handle));
     } else if (name == L"Icon") {
         HookIcon(element.Handle);
     }
