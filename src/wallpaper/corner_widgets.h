@@ -66,7 +66,6 @@ private:
     float coverAlpha = 0;
     float pausedFor = kPausedGrace;
     float artistWidth = 0;
-    float artistMax = 0;
     float nextArtistWidth = 0;
     float totalWidth = 0;
     std::wstring totalText;
@@ -77,6 +76,7 @@ private:
     bool shuffle = false;
 
     float TitleMax(CornerLayout const& layout) const;
+    float ArtistMax(CornerLayout const& layout) const;
     void DrawButtons(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility, int hovered,
                      int pressed);
     void DrawProgress(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, CornerLayout const& layout, float visibility);
