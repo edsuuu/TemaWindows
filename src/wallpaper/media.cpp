@@ -1,8 +1,10 @@
 #include "wallpaper/media.h"
 #include "wallpaper/audio.h"
+#include "wallpaper/http.h"
 #include "wallpaper/timing.h"
 
 #include <shcore.h>
+#include <shlwapi.h>
 #include <wincodec.h>
 #include <wrl/client.h>
 #include <winrt/Windows.Foundation.h>
@@ -13,6 +15,8 @@
 #include <cstdio>
 #include <mutex>
 #include <thread>
+
+#pragma comment(lib, "shlwapi.lib")
 
 using Microsoft::WRL::ComPtr;
 using namespace winrt::Windows::Media::Control;
@@ -63,6 +67,18 @@ std::shared_ptr<std::vector<BYTE>> DecodeImage(IStream* input, int size) {
 
     auto pixels = std::make_shared<std::vector<BYTE>>((size_t)size * size * 4);
     return SUCCEEDED(converter->CopyPixels(nullptr, size * 4, (UINT)pixels->size(), pixels->data())) ? pixels : nullptr;
+}
+
+// Baixa uma imagem (https://host/caminho) num quadrado de `size` px.
+std::shared_ptr<std::vector<BYTE>> DownloadImage(std::wstring const& url, int size) {
+    size_t hostStart = url.find(L"://"), pathStart = hostStart == std::wstring::npos ? hostStart : url.find(L'/', hostStart + 3);
+    if (pathStart == std::wstring::npos) return nullptr;
+
+    std::wstring host = url.substr(hostStart + 3, pathStart - hostStart - 3);
+    std::string bytes = HttpsRequest(host.c_str(), url.substr(pathStart));
+    ComPtr<IStream> stream;
+    stream.Attach(SHCreateMemStream((const BYTE*)bytes.data(), UINT(bytes.size())));
+    return bytes.empty() ? nullptr : DecodeImage(stream.Get(), size);
 }
 
 // Capa do álbum que o Spotify entrega na sessão de mídia (um JPEG pequeno), no tamanho da tela.
