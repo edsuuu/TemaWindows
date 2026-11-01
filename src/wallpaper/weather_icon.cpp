@@ -1,4 +1,5 @@
 #include "wallpaper/weather_icon.h"
+#include "wallpaper/palette.h"
 
 #include <cmath>
 #include <initializer_list>
@@ -106,7 +107,7 @@ void DrawWeatherIcon(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, ID2D1S
     dc->GetTransform(&base);
     float zoom = size / 64;
     IconPen pen{dc, brush, round, icons, base, origin, zoom, 2 * scale / zoom, day};
-    brush->SetColor({0.93f, 0.93f, 0.93f, 0.95f});
+    brush->SetColor(Paint(Ink::Text, 0.93f, 0.95f));
 
     if (code == 0) {
         DrawSky(pen, 32, 32, 1);
