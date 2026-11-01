@@ -9,8 +9,9 @@
 #include <string>
 #include <vector>
 
-static std::vector<winrt::weak_ref<FrameworkElement>> g_backgrounds;
-static std::wstring g_look;
+// Por thread do XAML, como o timer que relê (cada thread só pode mexer nos elementos dela).
+static thread_local std::vector<winrt::weak_ref<FrameworkElement>> g_backgrounds;
+static thread_local std::wstring g_look;
 
 // Esconde o preenchimento e a linha do topo da barra; se o Explorer trouxer de volta, somem de novo.
 static void HideNativeBackground(FrameworkElement const& background) {

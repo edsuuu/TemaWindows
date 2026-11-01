@@ -7,9 +7,10 @@
 #include <string>
 #include <vector>
 
+// Por thread do XAML, como o timer que relê.
 // ponytail: guarda os pincéis de todas as barras já criadas (as velhas também, poucas por Explorer); weak_ref se crescer.
-static std::vector<CompositionLinearGradientBrush> g_brushes;
-static std::wstring g_colors;
+static thread_local std::vector<CompositionLinearGradientBrush> g_brushes;
+static thread_local std::wstring g_colors;
 
 constexpr float kSquare = 11;
 constexpr float kGap = 2;
