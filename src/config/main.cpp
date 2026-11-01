@@ -1017,6 +1017,11 @@ static void LoadSettings() {
 // FundoConfig.exe (WallgetConfig.exe no instalador): configura os widgets do papel de parede, o fundo e a barra de
 // tarefas, com uma prévia ao lado; as mudanças aparecem na hora e só ficam com o Salvar (fechar sem salvar desfaz).
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
+    if (HWND open = FindWindowW(L"FundoConfig", nullptr)) {  // já aberto (pela bandeja ou pelo Iniciar): só traz para a frente
+        ShowWindow(open, IsIconic(open) ? SW_RESTORE : SW_SHOW);
+        SetForegroundWindow(open);
+        return 0;
+    }
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     scale = GetDpiForSystem() / 96.f;
@@ -1026,7 +1031,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     field = CreateSolidBrush(kField);
     LoadSettings();
 
-    WNDCLASSW windowClass{0, WindowProc, 0, 0, instance, LoadIconW(nullptr, (LPCWSTR)IDI_APPLICATION),
+    WNDCLASSW windowClass{0, WindowProc, 0, 0, instance, LoadIconW(instance, MAKEINTRESOURCEW(1)),
                           LoadCursorW(nullptr, (LPCWSTR)IDC_ARROW), background, nullptr, L"FundoConfig"};
     WNDCLASSW previewClass{0, DefWindowProcW, 0, 0, instance, nullptr, nullptr, (HBRUSH)GetStockObject(BLACK_BRUSH), nullptr, L"FundoPrevia"};
     RegisterClassW(&windowClass);
