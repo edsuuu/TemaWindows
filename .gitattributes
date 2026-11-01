@@ -1,0 +1,2 @@
+# O cmd lê .bat com fim de linha LF errado depois de um call (volta no meio de uma linha): sempre CRLF no disco.
+*.bat text eol=crlf

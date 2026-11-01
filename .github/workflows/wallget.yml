@@ -1,0 +1,72 @@
+# Wallget: compila o papel de parede, o app e a barra e gera o instalador (build\build-installer.bat) a cada push e
+# PR que mexe neles, com o Wallget-Setup.exe nos artefatos da execução. No main, se a versão do installer.iss ainda não
+# tem release, publica a wallget-v<versão> com ele (uma execução por vez, para duas não criarem a mesma).
+name: Wallget
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - src/wallpaper/**
+      - src/config/**
+      - src/taskbar/**
+      - src/common/**
+      - build/**
+      - assets/**
+      - .github/workflows/wallget.yml
+  pull_request:
+    paths:
+      - src/wallpaper/**
+      - src/config/**
+      - src/taskbar/**
+      - src/common/**
+      - build/**
+      - assets/**
+      - .github/workflows/wallget.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency: wallget-${{ github.ref }}
+
+jobs:
+  instalador:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versão
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path build/installer.iss -Pattern '#define Version "(.+)"').Matches[0].Groups[1].Value
+          if (-not (Select-String -Path src/config/main.cpp -SimpleMatch -Pattern "Wallget $version · ")) { throw "O título do app não diz Wallget $version (src/config/main.cpp)" }
+          "VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Inno Setup
+        shell: pwsh
+        run: if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
+
+      - name: Build e instalador
+        shell: cmd
+        run: build\build-installer.bat
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Wallget-${{ env.VERSION }}
+          path: |
+            bin/Wallget-Setup.exe
+            bin/FundoVivo.exe
+            bin/FundoConfig.exe
+            bin/TemaBarra.dll
+
+      - name: Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "wallget-v$env:VERSION"
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) { "$tag já existe"; exit 0 }
+          gh release create $tag bin/Wallget-Setup.exe --title "Wallget $env:VERSION" --generate-notes --target $env:GITHUB_SHA
