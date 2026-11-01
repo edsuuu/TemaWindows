@@ -18,7 +18,7 @@ bin\            os binários e contexto\ (pacotes gerados do TemaContexto)
 assets\         fundo.png (tema golden e papel de parede estático), fundo-morph.bin (tema loop), bloqueio-alga.png, folder.ico (ícone de pasta), contexto.png (logo dos pacotes)
 cache\          cache-clima.txt (última resposta do Open-Meteo), contexto\ (lista do menu e ícones das extensões)
 logs\           <binário>.log de cada DLL
-tools\          reload-*.ps1, theme.ps1, capture.exe, capture-wallpaper.exe, effects-test.exe, folder-icon.ps1 (gera o folder.ico), hwinfo-setup.ps1 (usado pelo instalador)
+tools\          reload-*.ps1, theme.ps1, capture.exe, capture-wallpaper.exe, effects-test.exe, folder-icon.ps1 e wallget-icon.ps1 (geram o folder.ico e o wallget.ico), hwinfo-setup.ps1 (usado pelo instalador)
 ```
 
 Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin\`.
@@ -46,7 +46,8 @@ Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin
   aleatória só liga/desliga (a ordem inteligente do Spotify não passa pelos controles do Windows nem pela API). Nome da
   música e do artista sublinham no hover e, no clique, abrem a música ou o artista no Spotify (link exato com o login
   do Spotify feito; sem ele, pela busca). Cores, partes, JSON, posição (9 lugares), tamanho, monitores, cidade do clima e
-  fundo vêm do FundoConfig.
+  fundo vêm do FundoConfig. Fica na bandeja (ícones ocultos, perto do relógio): clique abre o app; o menu tem Abrir e
+  Sair.
 - **TemaContexto** — põe no menu novo do clique direito os itens que só apareciam em "Mostrar mais opções" (Git,
   Visual Studio, PhpStorm, 7-Zip, NVIDIA e o que for instalado depois) e o item "Abrir WSL" (Terminal com o PowerShell
   padrão já no WSL, na home). Lê os verbos (`shell\`) e as extensões de menu (`shellex\ContextMenuHandlers`) de
