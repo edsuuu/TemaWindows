@@ -285,10 +285,11 @@ float InfoPanel::Height() const {
 }
 
 // Desenha embaixo dos anéis (a transformação do monitor já está posta, com o tamanho do bloco: fora de 100% o bitmap é
-// esticado, linear): x = borda esquerda da capa da música, y = embaixo das legendas, width = largura do bloco do canto. Clima + JSON são um bitmap refeito só quando o texto muda
-// (1x por segundo, pelo relógio, e a cada pontinho do carregando da luz) ou a paleta muda; por quadro é um DrawBitmap
-// por monitor, centralizado no bloco (com o clima à esquerda ele pode passar um pouco da largura). Com o mouse em cima
-// do valor da luz, ele ganha um fundo claro arredondado; o retângulo dele fica guardado para a janela de clique.
+// esticado, linear): x = borda esquerda da capa da música, y = embaixo das legendas, width = largura do bloco do canto.
+// Clima + JSON são um bitmap refeito só quando o texto muda (1x por segundo, pelo relógio, e a cada pontinho do
+// carregando da luz) ou a paleta muda; por quadro é um DrawBitmap por monitor, centralizado no bloco (com o clima à
+// esquerda ele pode passar um pouco da largura). Com o mouse em cima do valor da luz, ele ganha um fundo claro
+// arredondado; o retângulo dele fica guardado para a janela de clique.
 void InfoPanel::Draw(ID2D1DeviceContext* screen, float x, float y, float width, bool lightHovered) {
     if (!dc) Create(screen);
 
