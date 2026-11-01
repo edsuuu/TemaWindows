@@ -1,6 +1,7 @@
 #include "wallpaper/tray.h"
 #include "common/paths.h"
 
+#include <objbase.h>
 #include <shellapi.h>
 #include <windowsx.h>
 #include <string>
@@ -22,13 +23,10 @@ static void OpenConfig() {
     ShellExecuteW(nullptr, L"open", app.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
-// Sai de vez (volta na próxima vez que o Windows iniciar): tira o ícone e repõe o papel de parede do Windows, que
-// ficava escondido atrás da nossa janela.
+// Sai de vez (volta quando o Windows iniciar ou o app abrir): tira o ícone; com a nossa janela fechada, o WorkerW já
+// mostra o papel de parede do Windows sozinho.
 static void Quit() {
     Shell_NotifyIconW(NIM_DELETE, &tray);
-    wchar_t wallpaper[MAX_PATH] = {};
-    SystemParametersInfoW(SPI_GETDESKWALLPAPER, MAX_PATH, wallpaper, 0);
-    SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, wallpaper, SPIF_SENDCHANGE);
     ExitProcess(0);
 }
 
@@ -42,6 +40,7 @@ static void ShowMenu(HWND window, int x, int y) {
 
     SetForegroundWindow(window);  // sem isso o menu não fecha ao clicar fora
     UINT chosen = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON, x, y, 0, window, nullptr);
+    PostMessageW(window, WM_NULL, 0, 0);  // sem isso o menu da bandeja pisca e some na segunda vez (documentação do TrackPopupMenu)
     DestroyMenu(menu);
     if (chosen == kOpen) OpenConfig();
     if (chosen == kQuit) Quit();
@@ -82,6 +81,7 @@ static void FollowDarkMode() {
 // uma janela escondida que recebe os cliques.
 void StartTrayIcon(HINSTANCE instance) {
     std::thread([instance] {
+        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);  // o ShellExecute pede
         FollowDarkMode();
         taskbarCreated = RegisterWindowMessageW(L"TaskbarCreated");
         WNDCLASSW windowClass{0, TrayProc, 0, 0, instance, nullptr, nullptr, nullptr, nullptr, L"WallgetBandeja"};
