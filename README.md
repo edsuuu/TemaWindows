@@ -61,7 +61,9 @@ Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin
 - **TemaJanelas** — vidro nas Configurações.
 - **FundoVivo** — papel de parede animado (temas golden, nbhd e loop, ou uma imagem ou um vídeo do usuário, este
   sem som e em loop pelo Media Foundation) com os widgets no canto: música do Spotify com
-  equalizador, anéis de CPU/RAM/GPU/rede com temperaturas (HWiNFO e NVML), clima e um JSON com uptime, data e hora,
+  equalizador (a capa vem do Spotify; nas músicas em que ele não a entrega, da busca pública do Deezer, que recebe só
+  o nome e o artista dessas músicas),
+  anéis de CPU/RAM/GPU/rede com temperaturas (HWiNFO e NVML), clima e um JSON com uptime, data e hora,
   specs e monitores. Pausa com jogo, tela cheia ou tela bloqueada (o overlay do UnkvoidClips não conta). Põe o ícone
   com degradê nas pastas da área de trabalho, inclusive nas novas (`Pastas` = 0 desliga; pula repositórios git).
   Botões aleatória ⏮ ⏯ ⏭ clicáveis no cartão da música: o clique cai em janelas invisíveis (em camada, alfa 1)
