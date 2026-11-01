@@ -16,8 +16,8 @@ static std::unordered_set<void*> g_hooked;
 // Nada a preparar: o Explorer não precisa de estado por processo.
 void OnTapStarted() {}
 
-// Relê o fundo e as cores do logo a cada segundo, para o app do Wallget mudar a barra sem reiniciar o Explorer. Um
-// timer por thread do XAML (é ela que pode mexer nos elementos), criado no primeiro elemento.
+// Relê o fundo, as cores do logo e o player a cada segundo, para o app do Wallget mudar a barra sem reiniciar o
+// Explorer. Um timer por thread do XAML (é ela que pode mexer nos elementos), criado no primeiro elemento.
 static void StartRefreshTimer() {
     thread_local DispatcherTimer timer{nullptr};
     if (timer) return;
@@ -28,6 +28,7 @@ static void StartRefreshTimer() {
         try {
             RefreshBlurBackground();
             RefreshStartLogo();
+            RefreshMediaPlayer();
         } catch (...) {
             Log(L"erro ao reler a barra: %08X", winrt::to_hresult());
         }
@@ -98,7 +99,9 @@ static void RemoveFocusRing(std::wstring_view type, InstanceHandle handle) {
 }
 
 // Cada elemento novo da árvore XAML da barra: fundo com blur e botão "mostrar área de trabalho" invisível (continua
-// clicável) com Fundo; vidro no painel dos ícones ocultos e na caixa de pesquisa com Vidro; e os ícones.
+// clicável) com Fundo; vidro no painel dos ícones ocultos e na caixa de pesquisa com Vidro; o player do Spotify (sempre:
+// Player liga e desliga na hora) e a ilha XAML de cada barra, para saber a do monitor principal, onde ele aparece; e
+// os ícones.
 void OnElementAdded(ParentChildRelation const&, VisualElement const& element) {
     std::wstring_view type = element.Type ? element.Type : L"", name = element.Name ? element.Name : L"";
     RemoveFocusRing(type, element.Handle);
@@ -115,6 +118,10 @@ void OnElementAdded(ParentChildRelation const&, VisualElement const& element) {
         ApplyToBorder(element.Handle, ApplyOverflowGlass, L"vidro dos ícones ocultos");
     } else if (name == L"BackgroundElement" && Enabled(L"Vidro")) {
         ApplyToBorder(element.Handle, ApplySearchGlassIfSearchBox, L"vidro da pesquisa");
+    } else if (type == L"Taskbar.TaskbarFrame") {
+        ApplyNowAndOnLoad(FrameworkElementFromHandle(element.Handle), AddMediaPlayer, L"player");
+    } else if (type == L"Windows.UI.Xaml.Hosting.DesktopWindowXamlSource") {
+        AddTaskbarIsland(ElementFromHandle(element.Handle));
     } else if (name == L"Icon") {
         HookIcon(element.Handle);
     }

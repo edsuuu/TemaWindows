@@ -23,5 +23,12 @@ private:
     void Approach(float const* target, float dt);
 };
 
-ComPtr<IAudioCaptureClient> StartLoopbackCapture(ComPtr<IAudioClient>& client);
+struct LoopbackCapture {
+    ComPtr<IAudioClient> client;
+    ComPtr<IAudioCaptureClient> capture;
+    ULONGLONG nextAttempt = 0;
+
+    void Want(bool wanted, ULONGLONG now);
+};
+
 bool SpotifyAudible();

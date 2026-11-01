@@ -1,7 +1,6 @@
 #include "wallpaper/desktop.h"
+#include "wallpaper/fullscreen.h"
 
-#include <dwmapi.h>
-#include <shellapi.h>
 #include <wtsapi32.h>
 #include <algorithm>
 #include <atomic>
@@ -44,48 +43,17 @@ static bool SessionLocked() {
     return locked;
 }
 
-// A janela da frente é do UnkvoidClips? O overlay do Alt+Z cobre a tela inteira, mas é translúcido: o fundo aparece
-// atrás dele.
-static bool ClipsInFront() {
-    DWORD pid = 0;
-    GetWindowThreadProcessId(GetForegroundWindow(), &pid);
-    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (!process) return false;
-
-    wchar_t path[MAX_PATH];
-    DWORD size = MAX_PATH;
-    bool clips = QueryFullProcessImageNameW(process, 0, path, &size) && !_wcsicmp(wcsrchr(path, L'\\') + 1, L"UnkvoidClips.exe");
-    CloseHandle(process);
-    return clips;
-}
-
-// Jogo ou app em tela cheia (ou apresentação)? O overlay do UnkvoidClips não conta.
-// ponytail: com o overlay aberto por cima de um jogo, o fundo volta a desenhar atrás do jogo até o overlay fechar.
-static bool FullScreenApp() {
-    QUERY_USER_NOTIFICATION_STATE state;
-    return SUCCEEDED(SHQueryUserNotificationState(&state)) &&
-           (state == QUNS_BUSY || state == QUNS_RUNNING_D3D_FULL_SCREEN || state == QUNS_PRESENTATION_MODE) && !ClipsInFront();
-}
-
-// Todos os monitores cobertos por janelas maximizadas (visíveis e não ocultas pelo DWM)?
+// Todos os monitores cobertos por janelas maximizadas?
 static bool AllMonitorsCovered() {
-    struct { std::vector<HMONITOR> all, covered; } monitors;
+    std::vector<HMONITOR> all, covered = CoveredMonitors();
 
     EnumDisplayMonitors(nullptr, nullptr, [](HMONITOR monitor, HDC, LPRECT, LPARAM p) -> BOOL {
-        ((decltype(monitors)*)p)->all.push_back(monitor);
+        ((std::vector<HMONITOR>*)p)->push_back(monitor);
         return TRUE;
-    }, (LPARAM)&monitors);
+    }, (LPARAM)&all);
 
-    EnumWindows([](HWND window, LPARAM p) -> BOOL {
-        BOOL cloaked = FALSE;
-        DwmGetWindowAttribute(window, DWMWA_CLOAKED, &cloaked, sizeof cloaked);
-        if (IsWindowVisible(window) && IsZoomed(window) && !cloaked)
-            ((decltype(monitors)*)p)->covered.push_back(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST));
-        return TRUE;
-    }, (LPARAM)&monitors);
-
-    for (auto monitor : monitors.all)
-        if (std::find(monitors.covered.begin(), monitors.covered.end(), monitor) == monitors.covered.end()) return false;
+    for (auto monitor : all)
+        if (std::find(covered.begin(), covered.end(), monitor) == covered.end()) return false;
     return true;
 }
 

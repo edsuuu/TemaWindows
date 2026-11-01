@@ -62,6 +62,8 @@ constexpr int kFolders = 579;
 constexpr int kFirstBarMode = 580;
 constexpr int kLogoStandard = 583;
 constexpr int kLogoCustom = 584;
+constexpr int kPlayer = 585;
+constexpr int kFirstWave = 586;
 constexpr int kStartup = 590;
 constexpr int kHwinfo = 591;
 constexpr int kMaxMonitors = 8;
@@ -165,11 +167,13 @@ static bool imageFlow = false;
 static bool folders = true;
 static bool startup = true;
 static bool logoCustom = false;
+static bool player = true;
 static bool monitorShown[kMaxMonitors];
 static COLORREF logo[3];
 static int section = 0;
 static int theme = 0;
 static int barMode = 1;
+static int wave = 0;
 static int blurRadius = 9;
 static int veilPercent = 12;
 static DWORD veil = 31;  // BlurVeu como estava (0-255), para não mudar com o arredondamento do %
@@ -335,6 +339,8 @@ static void Apply() {
         if (logoCustom) WriteText(logoNames[i], Hex(logo[i]));
         else Forget(logoNames[i]);
     }
+    WriteNumber(L"Player", player);
+    WriteNumber(L"PlayerOnda", wave);
 }
 
 // Tela inteira redesenhada (botões, nomes e o aviso de não salvo).
@@ -496,6 +502,9 @@ static void Arrange(HWND window) {
             const wchar_t* names[3] = {L"Cor de cima (esquerda)", L"Cor do meio", L"Cor de baixo (direita)"};
             for (int i = 0; i < 3; i++) ink(kFirstLogoInk + i, names[i]);
         }
+        heading(L"Player do Spotify");
+        row(L"Na barra, com janela maximizada", kPlayer);
+        if (player) wide(kFirstWave, 2);
         break;
     case 7:
         row(L"Iniciar com o Windows", kStartup);
@@ -606,6 +615,7 @@ static bool* ToggleOf(int id) {
     case kPause: return &o.pause;
     case kFolders: return &folders;
     case kStartup: return &startup;
+    case kPlayer: return &player;
     }
     return nullptr;
 }
@@ -619,6 +629,7 @@ static bool Chosen(int id) {
     if (id >= kFirstBarMode && id < kFirstBarMode + 3) return kBarModes[id - kFirstBarMode] == DWORD(barMode);
     if (id == kCelsius || id == kFahrenheit) return (id == kFahrenheit) == o.fahrenheit;
     if (id == kLogoStandard || id == kLogoCustom) return (id == kLogoCustom) == logoCustom;
+    if (id == kFirstWave || id == kFirstWave + 1) return id - kFirstWave == wave;
     return false;
 }
 
@@ -855,6 +866,8 @@ static void RestoreDefaults() {
     veilPercent = 12;
     logoCustom = false;
     std::copy(std::begin(kLogoStandardColors), std::end(kLogoStandardColors), logo);
+    player = true;
+    wave = 0;
 }
 
 // Cliques: seções trocam a tela; cores abrem o seletor; temas de cores trocam as 8; interruptores alternam; escolhas
@@ -881,7 +894,7 @@ static void Command(HWND window, int id, int code) {
         for (int i = 0; i < kInkCount; i++) pending[i] = ToColor(kPresets[id - kFirstPreset].colors[i]);
     } else if (toggle) {
         *toggle = !*toggle;
-        relayout = id == kJson;
+        relayout = id == kJson || id == kPlayer;
     } else if (stepper) {
         if (part == 1) return;
         *stepper->value = std::clamp(*stepper->value + (part ? stepper->step : -stepper->step), stepper->low, stepper->high);
@@ -909,6 +922,8 @@ static void Command(HWND window, int id, int code) {
     } else if (id == kLogoStandard || id == kLogoCustom) {
         logoCustom = id == kLogoCustom;
         relayout = true;
+    } else if (id == kFirstWave || id == kFirstWave + 1) {
+        wave = id - kFirstWave;
     } else if (id == kHwinfo) {
         std::wstring parameters = L"-NoProfile -ExecutionPolicy Bypass -File \"" + ProjectPath(L"tools\\hwinfo-setup.ps1") + L"\"";
         ShellExecuteW(window, L"runas", L"powershell.exe", parameters.c_str(), nullptr, SW_HIDE);
@@ -1016,6 +1031,8 @@ static void LoadSettings() {
         logo[i] = FromHex(text, kLogoStandardColors[i]);
         logoCustom |= !text.empty();
     }
+    player = Enabled(L"Player");
+    wave = Setting(L"PlayerOnda", 0) == 1;
     startup = StartsWithWindows();
 }
 
@@ -1096,6 +1113,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     for (int i = 0; i < 3; i++) button(modes[i], kFirstBarMode + i);
     button(L"Branco, cinza e preto", kLogoStandard);
     button(L"Personalizado", kLogoCustom);
+    button(L"", kPlayer);
+    button(L"Onda do centro", kFirstWave);
+    button(L"Onda de baixo para cima", kFirstWave + 1);
     button(L"", kStartup);
     button(L"Reconfigurar", kHwinfo);
     button(L"Restaurar padrão", kRestore);

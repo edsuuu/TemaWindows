@@ -1,7 +1,21 @@
-# TemaWindows
+# Wallget
 
-Tema preto/cinza do Windows 11 feito sob medida: barra de tarefas, Iniciar e painéis, Configurações e papel de parede
-animado. Tudo roda como o usuário, sem driver e sem injeção global (só nos processos listados abaixo).
+Widgets no papel de parede do Windows 11 (música do Spotify, CPU/RAM/GPU/rede, clima e um JSON com o PC), um app para
+configurar tudo com prévia e o resto de um tema preto/cinza feito sob medida: barra de tarefas com o player do
+Spotify, Iniciar e painéis, Configurações e menu do clique direito. Tudo roda como o usuário, sem driver e sem injeção
+global (só nos processos listados abaixo).
+
+[Baixar o instalador](https://github.com/edsuuu/Wallget/releases/latest/download/Wallget-Setup.exe)
+
+![Widgets no papel de parede: música com equalizador, anéis de CPU, RAM, GPU e rede, JSON do PC e clima](docs/widgets.png)
+
+Com uma janela maximizada escondendo a área de trabalho, a música vai para a barra de tarefas:
+
+![Player do Spotify na barra: capa, nome, botões, tempo e a onda do som](docs/barra-player.png)
+
+O app muda o papel de parede e a barra na hora (Salvar mantém, fechar sem salvar desfaz):
+
+![App do Wallget com a prévia dos widgets](docs/app.png)
 
 ## Estrutura
 
@@ -19,6 +33,7 @@ assets\         fundo.png (tema golden e papel de parede estático), fundo-morph
 cache\          cache-clima.txt (última resposta do Open-Meteo), contexto\ (lista do menu e ícones das extensões)
 logs\           <binário>.log de cada DLL
 tools\          reload-*.ps1, theme.ps1, capture.exe, capture-wallpaper.exe, effects-test.exe, folder-icon.ps1 e wallget-icon.ps1 (geram o folder.ico e o wallget.ico), hwinfo-setup.ps1 (usado pelo instalador)
+docs\           prints do README
 ```
 
 Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin\`.
@@ -29,7 +44,13 @@ Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin
   acrílico ou transparente, indicador de execução cinza, vidro na caixa de
   pesquisa e no painel dos ícones ocultos (^), com o hover dos ícones das pontas acompanhando a curva, sem anel de
   foco. Injeta no Explorer via `InitializeXamlDiagnosticsEx` e reinjeta quando ele reinicia. Relê o fundo e as cores do
-  logo a cada segundo, então o app do Wallget muda a barra sem reiniciar o Explorer.
+  logo a cada segundo, então o app do Wallget muda a barra sem reiniciar o Explorer. Player do Spotify à esquerda da
+  barra do monitor principal quando uma janela maximizada esconde a área de trabalho (e o cartão da música): capa, nome
+  com aleatória ⏮ ⏯ ⏭, artista com o tempo e a barra de progresso, e a onda do som (o mesmo loopback e equalizador do
+  FundoVivo), nas cores do tema do Wallget e vermelha nos picos. A onda sai do centro ou cresce de baixo para cima como
+  no cartão (escolha no app); pausada, fica parada e o player continua. Some com o Spotify fechado, com jogo ou app em
+  tela cheia e quando não cabe antes do Iniciar (sem espaço para a onda, só ela sai). É XAML montado dentro da barra,
+  no `Grid` da `TaskbarFrame`; a barra principal é a ilha XAML dentro da `Shell_TrayWnd`.
 - **TemaMenus** — vidro liso no Iniciar, pesquisa, Configurações Rápidas e notificações; Iniciar no estilo do conceito
   (barra lateral com os botões nativos de conta/energia, Início/Apps/Criar, pastas na largura toda, lupa com degradê).
   Nas Configurações Rápidas: barra de tempo da música no cartão de mídia (só leitura, atualiza só com o painel aberto),
@@ -120,7 +141,8 @@ Números (DWORD) dos widgets e do fundo:
 - `ClimaUnidade` (1 = °F), `ClimaMaxMin` (0 esconde máxima e mínima), `FundoPausa` (0 não pausa com jogo ou tela
   cheia), `FundoOndular` (1 ondula a imagem como o golden), `IniciarComWindows` (0 = o Wallget não se põe no Run).
 - Barra: `BlurModo` (0 acrílico, 1 blur, 2 transparente), `BlurRaio` (px do blur, padrão 9) e `BlurVeu` (0 a 255,
-  véu preto por cima; padrão 31).
+  véu preto por cima; padrão 31). `Player` (0 tira o player do Spotify da barra) e `PlayerOnda` (0 onda saindo do
+  centro, 1 de baixo para cima), os dois na hora.
 
 ## Compilar e recarregar
 

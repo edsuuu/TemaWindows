@@ -1,3 +1,4 @@
+#include "wallpaper/desktop.h"
 #include "wallpaper/folder_icons.h"
 #include "wallpaper/light_switch.h"
 #include "wallpaper/media.h"
@@ -36,7 +37,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
 
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    StartMediaWatcher();
+    StartMediaWatcher(WallpaperHidden);
     StartLightService();
     StartNextTrackService();
     StartFolderIconService();
