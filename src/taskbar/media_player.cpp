@@ -8,11 +8,13 @@
 #include "wallpaper/palette.h"
 #include "wallpaper/timing.h"
 
+#include <commctrl.h>
 #include <windows.ui.xaml.hosting.desktopwindowxamlsource.h>
 #include <winrt/Windows.Storage.Streams.h>
 #include <winrt/Windows.UI.Text.h>
 #include <winrt/Windows.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.Xaml.Controls.Primitives.h>
+#include <winrt/Windows.UI.Xaml.Input.h>
 #include <winrt/Windows.UI.Xaml.Media.Imaging.h>
 #include <algorithm>
 #include <atomic>
@@ -50,6 +52,7 @@ struct Player {
     Controls::Grid track{nullptr};
     Controls::TextBlock title{nullptr}, artist{nullptr}, elapsed{nullptr}, total{nullptr};
     Controls::FontIcon shuffle{nullptr}, play{nullptr};
+    std::vector<Controls::Button> buttons;
     Media::ScaleTransform progress{nullptr};
     std::vector<CompositionSpriteShape> bars;
     std::vector<CompositionRoundedRectangleGeometry> barShapes;
@@ -121,8 +124,9 @@ static void Remove(Controls::Grid const& grid, UIElement const& child) {
 
 // Botão do player: o ícone (Segoe Fluent Icons) num Button sem borda nem fundo, que clareia no hover como os botões da
 // barra e tem nome para o leitor de tela. O clique (ou Enter/Espaço) manda o comando para o Spotify (0 aleatória, 1
-// voltar, 2 tocar/pausar, 3 avançar). Sem o anel de foco, como os outros botões da barra.
-static Controls::FontIcon AddButton(Controls::StackPanel const& row, const wchar_t* glyph, const wchar_t* name, int command) {
+// voltar, 2 tocar/pausar, 3 avançar). Sem o anel de foco, como os outros botões da barra. Com o ponteiro em cima, a
+// mãozinha (ver CursorProc; o PointerMoved põe na hora).
+static Controls::FontIcon AddButton(Player& p, Controls::StackPanel const& row, const wchar_t* glyph, const wchar_t* name, int command) {
     Controls::FontIcon icon;
     icon.FontFamily(Media::FontFamily(L"Segoe Fluent Icons"));
     icon.Glyph(glyph);
@@ -140,7 +144,9 @@ static Controls::FontIcon AddButton(Controls::StackPanel const& row, const wchar
     button.Content(icon);
     Automation::AutomationProperties::SetName(button, name);
     button.Click([command](auto&&, auto&&) { SendMediaCommand(command); });
+    button.PointerMoved([](auto&&, auto&&) { SetCursor(LoadCursor(nullptr, IDC_HAND)); });
     row.Children().Append(button);
+    p.buttons.push_back(button);
     return icon;
 }
 
@@ -188,11 +194,11 @@ static std::shared_ptr<Player> MakePlayer() {
     p->title.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
     Controls::StackPanel buttons;
     buttons.Orientation(Controls::Orientation::Horizontal);
-    p->shuffle = AddButton(buttons, L"", L"Aleatória", 0);
+    p->shuffle = AddButton(*p, buttons, L"", L"Aleatória", 0);
     p->shuffle.Foreground(Brush(Ink::Text, 0.92f, 0.4f));
-    AddButton(buttons, L"", L"Anterior", 1);
-    p->play = AddButton(buttons, L"", L"Tocar ou pausar", 2);
-    AddButton(buttons, L"", L"Próxima", 3);
+    AddButton(*p, buttons, L"", L"Anterior", 1);
+    p->play = AddButton(*p, buttons, L"", L"Tocar ou pausar", 2);
+    AddButton(*p, buttons, L"", L"Próxima", 3);
     Put(top, p->title, 0);
     Put(top, buttons, 1);
 
@@ -316,9 +322,33 @@ static void DrawWave(Player& p, WaveStyle const& style) {
     }
 }
 
+// O ponteiro está num botão de algum player na tela?
+static bool OverButton() {
+    for (auto const& p : g_players)
+        if (p->root.Visibility() == Visibility::Visible)
+            for (auto const& button : p->buttons)
+                if (button.IsPointerOver()) return true;
+    return false;
+}
+
+// Janela da ilha XAML da barra principal: o XAML da barra não tem cursor por elemento e a ilha põe a seta a cada
+// WM_SETCURSOR; antes dela, com o ponteiro num botão do player, fica a mãozinha. Exceção não pode sair daqui (derrubaria
+// o Explorer).
+static LRESULT CALLBACK CursorProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR) {
+    try {
+        if (message == WM_SETCURSOR && OverButton()) {
+            SetCursor(LoadCursor(nullptr, IDC_HAND));
+            return TRUE;
+        }
+    } catch (...) {
+    }
+    return DefSubclassProc(window, message, wParam, lParam);
+}
+
 // XamlRoot da barra do monitor principal. Cada barra é uma ilha XAML numa janela própria: a do principal fica dentro
 // da Shell_TrayWnd, as outras na Shell_SecondaryTrayWnd. A ilha só ganha janela depois de entrar na barra, por isso a
-// procura é a cada volta; ilha fechada ou com a janela destruída (a barra foi recriada) sai da lista.
+// procura é a cada volta; ilha fechada ou com a janela destruída (a barra foi recriada) sai da lista. A janela da
+// principal ganha o CursorProc (instalar de novo só atualiza o que já está lá).
 static winrt::Windows::UI::Xaml::XamlRoot PrimaryRoot() {
     winrt::Windows::UI::Xaml::XamlRoot primary{nullptr};
     std::erase_if(g_islands, [&](DesktopWindowXamlSource const& island) {
@@ -330,7 +360,10 @@ static winrt::Windows::UI::Xaml::XamlRoot PrimaryRoot() {
             if (!IsWindow(window)) return true;
 
             GetClassNameW(GetAncestor(window, GA_ROOT), owner, 64);
-            if (content && !wcscmp(owner, L"Shell_TrayWnd")) primary = content.XamlRoot();
+            if (content && !wcscmp(owner, L"Shell_TrayWnd")) {
+                primary = content.XamlRoot();
+                SetWindowSubclass(window, CursorProc, 1, 0);
+            }
             return false;
         } catch (...) {
             return true;
