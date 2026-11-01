@@ -171,6 +171,7 @@ static int theme = 0;
 static int barMode = 1;
 static int blurRadius = 9;
 static int veilPercent = 12;
+static DWORD veil = 31;  // BlurVeu como estava (0-255), para não mudar com o arredondamento do %
 static std::wstring imageFile;
 static std::wstring videoFile;
 static std::vector<std::pair<std::wstring, std::wstring>> monitors;
@@ -258,7 +259,7 @@ static void Forget(const wchar_t* name) {
 
 // Fechou sem salvar: o registro volta a como estava no último Salvar (e o FundoVivo e a barra junto, em até um
 // segundo; o clima da cidade antiga, em até 10 s).
-// ponytail: fechar pelo Gerenciador de Tarefas ou desligar o PC com mudança pendente deixa ela valendo.
+// ponytail: fechar pelo Gerenciador de Tarefas com mudança pendente deixa ela valendo.
 static void Revert() {
     for (auto const& [name, value] : unsaved) {
         if (value) RegSetKeyValueW(HKEY_CURRENT_USER, L"Software\\TemaBarra", name.c_str(), value->first, value->second.data(), DWORD(value->second.size()));
@@ -325,7 +326,8 @@ static void Apply() {
 
     WriteNumber(L"BlurModo", barMode);
     WriteNumber(L"BlurRaio", blurRadius);
-    WriteNumber(L"BlurVeu", DWORD(lroundf(veilPercent * 2.55f)));
+    if (lroundf(veil / 2.55f) != veilPercent) veil = DWORD(lroundf(veilPercent * 2.55f));
+    WriteNumber(L"BlurVeu", veil);
     const wchar_t* logoNames[3] = {L"LogoCor1", L"LogoCor2", L"LogoCor3"};
     for (int i = 0; i < 3; i++) {
         if (logoCustom) WriteText(logoNames[i], Hex(logo[i]));
@@ -571,6 +573,9 @@ static bool PickColor(HWND window, COLORREF& color) {
     color = dialog.rgbResult;
     return true;
 }
+
+const wchar_t kImageFilter[] = L"Imagens\0*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.webp;*.tif;*.tiff\0";
+const wchar_t kVideoFilter[] = L"Vídeos\0*.mp4;*.mov;*.m4v;*.wmv;*.mkv;*.avi;*.webm\0";
 
 // Seletor de arquivo (imagem ou vídeo); true se escolheu um.
 static bool PickFile(HWND window, std::wstring& path, const wchar_t* filter) {
@@ -882,13 +887,16 @@ static void Command(HWND window, int id, int code) {
     } else if (id == kCelsius || id == kFahrenheit) {
         o.fahrenheit = id == kFahrenheit;
     } else if (id >= kFirstTheme && id < kFirstTheme + int(std::size(kThemes))) {
-        theme = id - kFirstTheme;
+        int chosen = id - kFirstTheme;  // imagem e vídeo sem arquivo pedem um antes (senão o fundo fica preto)
+        if (chosen == 3 && imageFile.empty() && !PickFile(window, imageFile, kImageFilter)) return;
+        if (chosen == 4 && videoFile.empty() && !PickFile(window, videoFile, kVideoFilter)) return;
+        theme = chosen;
         relayout = true;
     } else if (id == kPickImage) {
-        if (!PickFile(window, imageFile, L"Imagens\0*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.webp;*.tif;*.tiff\0")) return;
+        if (!PickFile(window, imageFile, kImageFilter)) return;
         relayout = true;
     } else if (id == kPickVideo) {
-        if (!PickFile(window, videoFile, L"Vídeos\0*.mp4;*.mov;*.m4v;*.wmv;*.mkv;*.avi;*.webm\0")) return;
+        if (!PickFile(window, videoFile, kVideoFilter)) return;
         relayout = true;
     } else if (id >= kFirstBarMode && id < kFirstBarMode + 3) {
         barMode = int(kBarModes[id - kFirstBarMode]);
@@ -954,6 +962,9 @@ static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPA
     case WM_CLOSE:
         if (ConfirmClose(window)) DestroyWindow(window);
         return 0;
+    case WM_ENDSESSION:  // sair ou desligar com mudança pendente: desfaz, como fechar sem salvar
+        if (wParam && dirty) Revert();
+        return 0;
     case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
@@ -991,7 +1002,8 @@ static void LoadSettings() {
 
     barMode = int(std::min<DWORD>(Setting(L"BlurModo", 1), 2));
     blurRadius = int(std::min<DWORD>(Setting(L"BlurRaio", 9), 40));
-    veilPercent = int(lroundf(std::min<DWORD>(Setting(L"BlurVeu", 31), 255) / 2.55f));
+    veil = std::min<DWORD>(Setting(L"BlurVeu", 31), 255);
+    veilPercent = int(lroundf(veil / 2.55f));
     const wchar_t* logoNames[3] = {L"LogoCor1", L"LogoCor2", L"LogoCor3"};
     logoCustom = false;
     for (int i = 0; i < 3; i++) {
