@@ -30,21 +30,17 @@ namespace Media = winrt::Windows::UI::Xaml::Media;
 using winrt::Windows::UI::Xaml::Hosting::DesktopWindowXamlSource;
 
 // Estilos da onda (PlayerOnda): 0 barrinhas que saem do centro, do meio (graves) para as pontas (agudos); 1 uma barra
-// por banda, dos graves aos agudos, crescendo de baixo para cima como no cartão do papel de parede.
+// por banda, dos graves aos agudos, crescendo de baixo para cima como no cartão do papel de parede. As barras crescem
+// com a largura da onda, como no cartão.
 struct WaveStyle {
     int bars;
-    float width, pitch;
     bool fromCenter;
 };
 
-constexpr WaveStyle kWaveStyles[2] = {{37, 2, 4, true}, {Equalizer::kBands, 3, 5, false}};
-constexpr float kWaveHeight = 32;
-constexpr double kLeft = 12, kCover = 40, kGap = 10, kInfoWidth = 220, kMinInfoWidth = 90, kRoomGap = 16;
+constexpr WaveStyle kWaveStyles[2] = {{37, true}, {Equalizer::kBands, false}};
+constexpr float kWaveHeight = 32, kMaxWaveWidth = 400;
+constexpr double kLeft = 12, kCover = 40, kGap = 10, kInfoWidth = 220, kMinInfoWidth = 90, kMinWaveWidth = 80, kRoomGap = 16;
 constexpr double kShortWidth = kLeft + kCover + kGap + kInfoWidth;
-
-constexpr float WaveWidth(WaveStyle const& style) {
-    return style.bars * style.pitch - (style.pitch - style.width);
-}
 
 struct Player {
     Controls::StackPanel root{nullptr}, info{nullptr};
@@ -58,6 +54,8 @@ struct Player {
     std::vector<CompositionRoundedRectangleGeometry> barShapes;
     std::vector<CompositionColorBrush> barColors;
     std::shared_ptr<std::vector<BYTE>> shownCover;
+    double waveWidth = 0;
+    float barWidth = 0;
     bool shuffleOn = false, gone = false;
 };
 
@@ -67,7 +65,7 @@ static thread_local std::vector<DesktopWindowXamlSource> g_islands;
 static thread_local DispatcherTimer g_stateTimer{nullptr}, g_waveTimer{nullptr};
 static thread_local Equalizer g_equalizer;
 static thread_local LoopbackCapture g_loopback;
-static thread_local double g_lastWave;
+static thread_local double g_lastWave, g_waveWidth = 200;
 static thread_local bool g_dancing, g_enabled = true;
 static thread_local int g_style = -1, g_palette = -1;
 static std::atomic<bool> g_idle{true};
@@ -151,19 +149,17 @@ static Controls::FontIcon AddButton(Player& p, Controls::StackPanel const& row, 
 }
 
 // Onda da música: uma barra (retângulo da composição, com a própria cor) por coluna, desenhada a cada quadro sem passar
-// pelo layout do XAML.
+// pelo layout do XAML. A largura vem do Tick (a escolhida, ou menos se não couber).
 static Controls::Border MakeWave(Player& p, WaveStyle const& style) {
     Controls::Border wave;
-    wave.Width(WaveWidth(style));
     wave.Height(kWaveHeight);
     wave.VerticalAlignment(VerticalAlignment::Center);
 
     auto c = ElementCompositionPreview::GetElementVisual(wave).Compositor();
     auto shapes = c.CreateShapeVisual();
-    shapes.Size({WaveWidth(style), kWaveHeight});
+    shapes.Size({kMaxWaveWidth, kWaveHeight});
     for (int i = 0; i < style.bars; i++) {
         auto geometry = c.CreateRoundedRectangleGeometry();
-        if (style.fromCenter) geometry.CornerRadius({style.width / 2, style.width / 2});
         auto color = c.CreateColorBrush();
         auto bar = c.CreateSpriteShape(geometry);
         bar.FillBrush(color);
@@ -312,17 +308,24 @@ static void ShowSong(Player& p, NowPlaying const& song, double now, double info)
 // Barras da onda no estilo escolhido, na cor do equalizador do tema, indo para a do pico (vermelha) quando a banda
 // passa de 85%, como no cartão do papel de parede. Do centro: as da direita meia banda deslocadas das da esquerda para
 // não ficar um espelho, cada uma crescendo para cima e para baixo; parada, vira uma linha de pontinhos. De baixo para
-// cima: uma barra por banda, dos graves aos agudos.
+// cima: uma barra por banda, dos graves aos agudos. Como no cartão, cada barra tem metade do passo (crescem com a
+// largura), começa num pixel inteiro e a altura não tem degraus.
 static void DrawWave(Player& p, WaveStyle const& style) {
     const int middle = style.bars / 2;
+    float width = float(p.waveWidth), barWidth = std::max(1.f, std::round(width / style.bars * 0.5f)), step = (width - barWidth) / (style.bars - 1);
+    if (barWidth != p.barWidth) {
+        p.barWidth = barWidth;
+        for (auto const& shape : p.barShapes) shape.CornerRadius(style.fromCenter ? float2{barWidth / 2, barWidth / 2} : float2{0, 0});
+    }
+
     for (int i = 0; i < style.bars; i++) {
         int distance = std::abs(i - middle);
         int band = style.fromCenter ? std::min(Equalizer::kBands - 1, (distance * (Equalizer::kBands - 1) + (i > middle ? middle / 2 : 0)) / middle) : i;
-        float level = g_equalizer.level[band], height = 2 * std::round((2 + level * (kWaveHeight - 2)) / 2);
+        float level = g_equalizer.level[band], height = 2 + level * (kWaveHeight - 2);
         float red = std::clamp((level - 0.85f) / 0.15f, 0.f, 1.f);
         D2D1_COLOR_F calm = Paint(Ink::Equalizer, 0.9f, 0.6f + 0.4f * level), peak = Paint(Ink::Peak, 0.95f, calm.a);
-        p.barShapes[i].Size({style.width, height});
-        p.bars[i].Offset({i * style.pitch, style.fromCenter ? (kWaveHeight - height) / 2 : kWaveHeight - height});
+        p.barShapes[i].Size({barWidth, height});
+        p.bars[i].Offset({std::round(i * step), style.fromCenter ? (kWaveHeight - height) / 2 : kWaveHeight - height});
         p.barColors[i].Color(ToColor({calm.r + (peak.r - calm.r) * red, calm.g + (peak.g - calm.g) * red, calm.b + (peak.b - calm.b) * red, calm.a}));
     }
 }
@@ -387,17 +390,17 @@ static double FreeWidth(FrameworkElement const& grid) {
 }
 
 // A cada 250 ms: o player aparece na barra de cada monitor sempre que o Spotify tem música, tocando ou pausada
-// (pausada, a onda vira a linha parada), se couber antes do Iniciar (sem espaço para a onda, só ela sai; com menos
-// ainda, a versão compacta, até o texto ficar com kMinInfoWidth). Sem poder
-// aparecer (Player = 0, jogo em tela cheia) nem lê o Spotify. O som é capturado só com alguma onda na tela e a música
-// tocando neste PC; tocando em outro aparelho, a onda dança sozinha.
+// (pausada, a onda vira a linha parada), se couber antes do Iniciar: sem espaço, a onda encolhe até kMinWaveWidth e
+// depois sai; com menos ainda, fica a versão compacta, até o texto ficar com kMinInfoWidth. Sem poder aparecer
+// (Player = 0, jogo em tela cheia) nem lê o Spotify. O som é capturado só com alguma onda na tela e a música tocando
+// neste PC; tocando em outro aparelho, a onda dança sozinha.
 static void Tick() {
     HookIslands();
     bool idle = !g_enabled || FullScreenApp();
     g_idle = idle;
     NowPlaying song = CurrentMedia();
     bool show = !idle && !song.title.empty();
-    double now = Now(), full = kShortWidth + kGap + WaveWidth(kWaveStyles[g_style]);
+    double now = Now();
     bool waving = false;
 
     std::erase_if(g_players, [](auto const& p) {
@@ -407,10 +410,12 @@ static void Tick() {
     for (auto const& p : g_players) {
         double room = show ? FreeWidth(ParentOf(p->root)) - kRoomGap : 0;
         double info = std::min(kInfoWidth, std::floor(room - (kShortWidth - kInfoWidth)));
-        p->wave.Visibility(room >= full ? Visibility::Visible : Visibility::Collapsed);
+        double wave = std::min(g_waveWidth, std::floor(room - kShortWidth - kGap));
+        if (wave >= kMinWaveWidth && wave != p->waveWidth) p->wave.Width(p->waveWidth = wave);
+        p->wave.Visibility(wave >= kMinWaveWidth ? Visibility::Visible : Visibility::Collapsed);
         p->root.Visibility(info >= kMinInfoWidth ? Visibility::Visible : Visibility::Collapsed);
         if (info >= kMinInfoWidth) ShowSong(*p, song, now, info);
-        waving |= room >= full;
+        waving |= wave >= kMinWaveWidth;
     }
 
     g_dancing = song.playing && song.elsewhere;
@@ -423,7 +428,8 @@ static void Tick() {
     }
 }
 
-// A cada quadro da onda (~30 por segundo): lê o som, atualiza o equalizador e redesenha as barras visíveis.
+// A cada quadro da onda (~60 por segundo, como o cartão do papel de parede): lê o som, atualiza o equalizador e
+// redesenha as barras visíveis.
 static void WaveTick() {
     double now = Now();
     float dt = std::min(float(now - g_lastWave), 0.1f);
@@ -462,8 +468,9 @@ static void StartPlayerTimers() {
     });
     g_stateTimer.Start();
 
+    // O relógio do Windows anda de 15,6 em 15,6 ms: 15 ms dá ~64 quadros por segundo; os 33 de antes viravam ~47 ms.
     g_waveTimer = DispatcherTimer();
-    g_waveTimer.Interval(std::chrono::milliseconds(33));
+    g_waveTimer.Interval(std::chrono::milliseconds(15));
     g_waveTimer.Tick([](auto&&, auto&&) {
         thread_local HRESULT last = S_OK;
         Guarded(L"na onda do player", last, WaveTick);
@@ -480,12 +487,14 @@ static void PutPlayer(Controls::Grid const& grid) {
 }
 
 // A cada segundo, junto com o resto da barra: relê Player (0 esconde), PlayerOnda (o estilo da onda), PlayerOndaForca
-// (30 a 100%, padrão 70: com menos força a barra precisa de mais som para encher e ficar vermelha) e as cores do tema.
-// Mudou o estilo ou alguma cor, troca cada player por um novo com o visual novo.
+// (30 a 100%, padrão 70: com menos força a barra precisa de mais som para encher e ficar vermelha), PlayerOndaLargura
+// (100 a 400 DIPs, padrão 200) e as cores do tema. Mudou o estilo ou alguma cor, troca cada player por um novo com o
+// visual novo.
 void RefreshMediaPlayer() {
     int style = Setting(L"PlayerOnda", 0) == 1;
     g_enabled = Enabled(L"Player");
     g_equalizer.range = 18.f * 100 / std::clamp<DWORD>(Setting(L"PlayerOndaForca", 70), 30, 100);
+    g_waveWidth = std::clamp<DWORD>(Setting(L"PlayerOndaLargura", 200), 100, DWORD(kMaxWaveWidth));
     ReloadPalette();
     if (style == g_style && PaletteVersion() == g_palette) return;
 
