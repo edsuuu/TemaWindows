@@ -3,7 +3,9 @@
 #include "common/xaml.h"
 
 void ApplyStartLogo(FrameworkElement const& icon);
+void RefreshStartLogo();
 void ApplyBlurBackground(FrameworkElement const& background);
+void RefreshBlurBackground();
 void HookTaskButtons(FrameworkElement const& list);
 void MirrorRunningIndicator(FrameworkElement const& original);
 void ApplySearchGlass(Controls::Border const& box);
