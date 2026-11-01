@@ -67,18 +67,23 @@ static ComPtr<IAudioCaptureClient> StartLoopbackCapture(ComPtr<IAudioClient>& cl
     return capture;
 }
 
-// Liga o loopback quando alguém quer o som (se falhar, tenta de novo em 10 s) e fecha quando não quer mais.
+// Liga o loopback quando alguém quer o som (se falhar, tenta de novo em 10 s) e fecha quando não quer mais. A saída
+// que sumiu (fone desligado: AUDCLNT_E_DEVICE_INVALIDATED) também fecha, e abre de novo na saída padrão de agora.
+// ponytail: trocar a saída padrão com as duas ligadas continua na antiga; IMMNotificationClient se fizer falta.
 void LoopbackCapture::Want(bool wanted, ULONGLONG now) {
+    UINT32 padding;
+    if (client && (!wanted || FAILED(client->GetCurrentPadding(&padding)))) {
+        client->Stop();
+        capture = nullptr;
+        client = nullptr;
+    }
+
     if (wanted && !capture && now >= nextAttempt) {
         capture = StartLoopbackCapture(client);
         if (!capture) {
             client = nullptr;
             nextAttempt = now + 10000;
         }
-    } else if (!wanted && client) {
-        client->Stop();
-        capture = nullptr;
-        client = nullptr;
     }
 }
 
