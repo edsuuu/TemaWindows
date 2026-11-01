@@ -47,7 +47,8 @@ Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin
   logo a cada segundo, então o app do Wallget muda a barra sem reiniciar o Explorer. Player do Spotify à esquerda da
   barra de cada monitor sempre que o Spotify tem música: capa, nome com aleatória ⏮ ⏯ ⏭, artista com o tempo e a
   barra de progresso, e a onda do som (o mesmo loopback e equalizador do FundoVivo), nas cores do tema do Wallget e
-  vermelha nos picos. A onda sai do centro ou cresce de baixo para cima como no cartão, com força ajustável (escolhas
+  vermelha nos picos, a ~60 quadros por segundo. A onda sai do centro ou cresce de baixo para cima como no cartão, com
+  força e largura ajustáveis (mais larga, barras mais grossas; escolhas
   no app); pausada, fica parada e o player continua. Sem espaço antes do Iniciar, primeiro sai a onda e depois fica a
   versão compacta (capa, nome, artista e tocar/pausar). Some com o Spotify fechado e com jogo ou app em tela cheia.
   É XAML montado dentro da barra, no `Grid` da `TaskbarFrame`; a mãozinha dos botões vem de um subclass na janela da
@@ -143,7 +144,8 @@ Números (DWORD) dos widgets e do fundo:
   cheia), `FundoOndular` (1 ondula a imagem como o golden), `IniciarComWindows` (0 = o Wallget não se põe no Run).
 - Barra: `BlurModo` (0 acrílico, 1 blur, 2 transparente), `BlurRaio` (px do blur, padrão 9) e `BlurVeu` (0 a 255,
   véu preto por cima; padrão 31). `Player` (0 tira o player do Spotify da barra), `PlayerOnda` (0 onda saindo do
-  centro, 1 de baixo para cima) e `PlayerOndaForca` (30 a 100%, padrão 70; menos força, menos picos vermelhos), todos
+  centro, 1 de baixo para cima), `PlayerOndaForca` (30 a 100%, padrão 70; menos força, menos picos vermelhos) e
+  `PlayerOndaLargura` (100 a 400 px, padrão 200; cabe o que der antes do Iniciar), todos
   na hora.
 
 ## Compilar e recarregar
