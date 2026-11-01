@@ -13,11 +13,12 @@ static void FitCapsule(Controls::Border const& box, CompositionRoundedRectangleG
     float2 size{(float)box.ActualWidth(), (float)box.ActualHeight()};
     if (size.x < 2 || size.y < 2) return;
 
-    float radius = maxRadius = std::max(maxRadius, std::min((float)box.CornerRadius().TopLeft, size.y / 2));
+    float radius = std::max(maxRadius, std::min((float)box.CornerRadius().TopLeft, size.y / 2));
     shape.CornerRadius({radius, radius});
     shape.Size(size);
     glass.Size(size);
-    Log(L"caixa de pesquisa com vidro: %.0fx%.0f, cantos %.0f", size.x, size.y, radius);
+    if (radius != maxRadius) Log(L"caixa de pesquisa com vidro: %.0fx%.0f, cantos %.0f", size.x, size.y, radius);
+    maxRadius = radius;
 }
 
 // Zera a borda da caixa (a do Windows e a do estado ativo, com a pesquisa aberta): nenhum contorno.
