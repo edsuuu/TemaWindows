@@ -9,7 +9,7 @@ global (só nos processos listados abaixo).
 
 ![Widgets no papel de parede: música com equalizador, anéis de CPU, RAM, GPU e rede, JSON do PC e clima](docs/widgets.png)
 
-Com uma janela maximizada escondendo a área de trabalho, a música vai para a barra de tarefas:
+A música também fica na barra de tarefas, para quando uma janela esconde a área de trabalho:
 
 ![Player do Spotify na barra: capa, nome, botões, tempo e a onda do som](docs/barra-player.png)
 
@@ -45,12 +45,12 @@ Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin
   pesquisa e no painel dos ícones ocultos (^), com o hover dos ícones das pontas acompanhando a curva, sem anel de
   foco. Injeta no Explorer via `InitializeXamlDiagnosticsEx` e reinjeta quando ele reinicia. Relê o fundo e as cores do
   logo a cada segundo, então o app do Wallget muda a barra sem reiniciar o Explorer. Player do Spotify à esquerda da
-  barra do monitor principal quando uma janela maximizada esconde a área de trabalho (e o cartão da música): capa, nome
-  com aleatória ⏮ ⏯ ⏭, artista com o tempo e a barra de progresso, e a onda do som (o mesmo loopback e equalizador do
-  FundoVivo), nas cores do tema do Wallget e vermelha nos picos. A onda sai do centro ou cresce de baixo para cima como
-  no cartão (escolha no app); pausada, fica parada e o player continua. Some com o Spotify fechado, com jogo ou app em
-  tela cheia e quando não cabe antes do Iniciar (sem espaço para a onda, só ela sai). É XAML montado dentro da barra,
-  no `Grid` da `TaskbarFrame`; a barra principal é a ilha XAML dentro da `Shell_TrayWnd`.
+  barra do monitor principal sempre que o Spotify tem música: capa, nome com aleatória ⏮ ⏯ ⏭, artista com o tempo e a
+  barra de progresso, e a onda do som (o mesmo loopback e equalizador do FundoVivo), nas cores do tema do Wallget e
+  vermelha nos picos. A onda sai do centro ou cresce de baixo para cima como no cartão (escolha no app); pausada, fica
+  parada e o player continua. Some com o Spotify fechado, com jogo ou app em tela cheia e quando não cabe antes do
+  Iniciar (sem espaço para a onda, só ela sai). É XAML montado dentro da barra, no `Grid` da `TaskbarFrame`; a barra
+  principal é a ilha XAML dentro da `Shell_TrayWnd`.
 - **TemaMenus** — vidro liso no Iniciar, pesquisa, Configurações Rápidas e notificações; Iniciar no estilo do conceito
   (barra lateral com os botões nativos de conta/energia, Início/Apps/Criar, pastas na largura toda, lupa com degradê).
   Nas Configurações Rápidas: barra de tempo da música no cartão de mídia (só leitura, atualiza só com o painel aberto),

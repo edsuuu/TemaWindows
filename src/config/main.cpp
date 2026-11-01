@@ -503,13 +503,13 @@ static void Arrange(HWND window) {
             for (int i = 0; i < 3; i++) ink(kFirstLogoInk + i, names[i]);
         }
         heading(L"Player do Spotify");
-        row(L"Na barra, com janela maximizada", kPlayer);
+        row(L"Na barra de tarefas", kPlayer);
         if (player) wide(kFirstWave, 2);
         break;
     case 7:
         row(L"Iniciar com o Windows", kStartup);
         row(HwinfoStatus(), kHwinfo);
-        heading(L"Wallget 1.1.1 · muda na hora, Salvar mantém");
+        heading(L"Wallget 1.2.0 · muda na hora, Salvar mantém");
         break;
     }
 }
