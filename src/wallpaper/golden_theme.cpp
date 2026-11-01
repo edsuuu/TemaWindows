@@ -9,7 +9,7 @@
 static const char kShader[] = R"(
 Texture2D image : register(t0);
 SamplerState linearSampler : register(s0);
-cbuffer Constants : register(b0) { float time; float aspect; float2 padding; float4 fit; float4 block; };
+cbuffer Constants : register(b0) { float time; float aspect; float flow; float shadow; float4 fit; float4 block; };
 struct V { float4 pos : SV_Position; float2 uv : TEXCOORD; };
 
 // Um triângulo que cobre o monitor inteiro.
@@ -20,15 +20,15 @@ V vs(uint id : SV_VertexID) {
     return o;
 }
 
-// "Preencher": cobre o monitor sem distorcer, com zoom de 4% para sobrar imagem nas bordas para o movimento.
+// "Preencher": cobre o monitor sem distorcer; ondulando, com zoom de 4% para sobrar imagem nas bordas para o movimento.
 float2 FillUv(float2 uv) {
     uv = fit.zw + uv * fit.xy;
-    return 0.5 + (uv - 0.5) * 0.96;
+    return 0.5 + (uv - 0.5) * (1 - 0.04 * flow);
 }
 
 // Ondas largas em direções diferentes (ciclos de ~18 a 28 s): a forma inteira flui como tecido, devagar, com um giro
 // leve e uma "respiração" em volta do centro. Perto da borda da imagem (últimos 12%) o movimento some, então o
-// deslocamento máximo (~0,04) nunca lê fora dela, o que viraria uma faixa esticada.
+// deslocamento máximo (~0,04) nunca lê fora dela, o que viraria uma faixa esticada. flow = 0: parada.
 float2 Flow(float2 uv) {
     float2 p = uv * float2(aspect, 1);
     float tt = time * 0.8;
@@ -42,15 +42,16 @@ float2 Flow(float2 uv) {
     q = float2(q.x * cos(a) - q.y * sin(a), q.x * sin(a) + q.y * cos(a)) / float2(aspect, 1);
 
     float2 m = min(uv, 1 - uv);
-    return lerp(uv, c + q * (1 - 0.02 * sin(tt * 0.22)) + d * 0.012, smoothstep(0.0, 0.12, min(m.x, m.y)));
+    return lerp(uv, c + q * (1 - 0.02 * sin(tt * 0.22)) + d * 0.012, flow * smoothstep(0.0, 0.12, min(m.x, m.y)));
 }
 
 // Área escura suave atrás do bloco do canto (música + indicadores), para nenhuma borda clara passar brilhando atrás do
-// texto: retângulo arredondado 24 px maior que o bloco, 75% mais escuro dentro, degradê de ~130 px para fora.
+// texto: retângulo arredondado 24 px maior que o bloco, `shadow` mais escuro dentro (75% no padrão), degradê de ~130 px
+// para fora.
 float CornerShade(float2 pixel) {
     float2 e = abs(pixel - (block.xy + block.zw) / 2) - (block.zw - block.xy) / 2 - 24 + 40;
     float dist = length(max(e, 0)) + min(max(e.x, e.y), 0) - 40;
-    return 1 - 0.75 * smoothstep(110, -20, dist);
+    return 1 - shadow * smoothstep(110, -20, dist);
 }
 
 // A imagem ondulando, escurecida atrás do bloco do canto.
@@ -63,7 +64,8 @@ float4 ps(V i) : SV_Target {
 struct Constants {
     float time;
     float aspect;
-    float padding[2];
+    float flow;
+    float shadow;
     float fit[4];
     float block[4];
 };
@@ -120,6 +122,12 @@ void GoldenTheme::Load(ID3D11Device* device, ID3D11DeviceContext* context, std::
     imageAspect = float(width) / height;
 }
 
+// Usa uma textura de fora (o quadro do vídeo) no lugar da imagem.
+void GoldenTheme::Use(ID3D11ShaderResourceView* view, float aspect) {
+    image = view;
+    imageAspect = aspect;
+}
+
 // Solta a imagem: ela só fica carregada neste tema.
 void GoldenTheme::Unload() {
     image = nullptr;
@@ -131,12 +139,13 @@ bool GoldenTheme::Loaded() const {
     return image != nullptr;
 }
 
-// Um monitor: a imagem inteira ondulando no modo "preencher" (monitor mais largo corta em cima e embaixo; mais alto,
-// nas laterais), com a área escura atrás do bloco do canto (x0 y0 x1 y1 em pixels da janela).
-void GoldenTheme::Draw(ID3D11DeviceContext* context, RECT const& monitor, float time, const float block[4]) {
+// Um monitor: a imagem inteira no modo "preencher" (monitor mais largo corta em cima e embaixo; mais alto, nas
+// laterais), ondulando com flow = 1, com a área escura (shadow 0 a 1) atrás do bloco do canto (x0 y0 x1 y1 em pixels
+// da janela).
+void GoldenTheme::Draw(ID3D11DeviceContext* context, RECT const& monitor, float time, const float block[4], float flow, float shadow) {
     float width = float(monitor.right - monitor.left), height = float(monitor.bottom - monitor.top);
     float monitorAspect = width / height;
-    Constants values{time, imageAspect, {}, {}, {block[0], block[1], block[2], block[3]}};
+    Constants values{time, imageAspect, flow, shadow, {}, {block[0], block[1], block[2], block[3]}};
 
     if (monitorAspect > imageAspect) {
         values.fit[0] = 1;

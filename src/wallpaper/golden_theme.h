@@ -10,9 +10,10 @@ using Microsoft::WRL::ComPtr;
 struct GoldenTheme {
     bool Create(ID3D11Device* device);
     void Load(ID3D11Device* device, ID3D11DeviceContext* context, std::wstring const& path);
+    void Use(ID3D11ShaderResourceView* view, float aspect);
     void Unload();
     bool Loaded() const;
-    void Draw(ID3D11DeviceContext* context, RECT const& monitor, float time, const float block[4]);
+    void Draw(ID3D11DeviceContext* context, RECT const& monitor, float time, const float block[4], float flow, float shadow);
 
 private:
     ComPtr<ID3D11VertexShader> vertexShader;
