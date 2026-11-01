@@ -143,8 +143,8 @@ static NowPlaying ReadSpotify(GlobalSystemMediaTransportControlsSessionManager c
 }
 
 // Thread da mídia: lê o Spotify 1x por segundo (GlobalSystemMediaTransportControls); enquanto `paused` disser que
-// ninguém vê (o fundo oculto, a barra atrás de um jogo) nem pergunta. Se o gerenciador de sessões falhar, pede outro na
-// próxima volta.
+// ninguém vê (o fundo oculto, o player da barra sem aparecer) nem pergunta, e volta a ler em até 0,1 s quando alguém
+// volta a ver. Se o gerenciador de sessões falhar, pede outro na próxima volta.
 static void MediaLoop(bool (*paused)()) {
     winrt::init_apartment();
     GlobalSystemMediaTransportControlsSessionManager manager{nullptr};
@@ -164,8 +164,8 @@ static void MediaLoop(bool (*paused)()) {
             g_nowPlaying = song;
         }
 
-        do Sleep(1000);
-        while (paused());
+        Sleep(1000);
+        while (paused()) Sleep(100);
     }
 }
 
