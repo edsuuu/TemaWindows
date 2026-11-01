@@ -25,16 +25,19 @@ Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin
 
 ## Componentes
 
-- **TemaBarra** — logo do Iniciar com degradê, blur no fundo da barra, indicador de execução cinza, vidro na caixa de
+- **TemaBarra** — logo do Iniciar com degradê (branco, cinza e preto ou três cores escolhidas), fundo da barra com blur,
+  acrílico ou transparente, indicador de execução cinza, vidro na caixa de
   pesquisa e no painel dos ícones ocultos (^), com o hover dos ícones das pontas acompanhando a curva, sem anel de
-  foco. Injeta no Explorer via `InitializeXamlDiagnosticsEx` e reinjeta quando ele reinicia.
+  foco. Injeta no Explorer via `InitializeXamlDiagnosticsEx` e reinjeta quando ele reinicia. Relê o fundo e as cores do
+  logo a cada segundo, então o app do Wallget muda a barra sem reiniciar o Explorer.
 - **TemaMenus** — vidro liso no Iniciar, pesquisa, Configurações Rápidas e notificações; Iniciar no estilo do conceito
   (barra lateral com os botões nativos de conta/energia, Início/Apps/Criar, pastas na largura toda, lupa com degradê).
   Nas Configurações Rápidas: barra de tempo da música no cartão de mídia (só leitura, atualiza só com o painel aberto),
   engrenagem na linha do volume e, nas subpáginas (Wi-Fi, Bluetooth...), Voltar com hover arredondado e interruptor
   à direita.
 - **TemaJanelas** — vidro nas Configurações.
-- **FundoVivo** — papel de parede animado (temas golden, nbhd e loop) com os widgets no canto: música do Spotify com
+- **FundoVivo** — papel de parede animado (temas golden, nbhd e loop, ou uma imagem ou um vídeo do usuário, este
+  sem som e em loop pelo Media Foundation) com os widgets no canto: música do Spotify com
   equalizador, anéis de CPU/RAM/GPU/rede com temperaturas (HWiNFO e NVML), clima e um JSON com uptime, data e hora,
   specs e monitores. Pausa com jogo, tela cheia ou tela bloqueada (o overlay do UnkvoidClips não conta). Põe o ícone
   com degradê nas pastas da área de trabalho, inclusive nas novas (`Pastas` = 0 desliga; pula repositórios git).
@@ -42,7 +45,8 @@ Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin
   filhas do Progman, acima dos ícones, e vira comando nos controles de mídia do Windows (sem hook de mouse). A
   aleatória só liga/desliga (a ordem inteligente do Spotify não passa pelos controles do Windows nem pela API). Nome da
   música e do artista sublinham no hover e, no clique, abrem a música ou o artista no Spotify (link exato com o login
-  do Spotify feito; sem ele, pela busca). Cores, JSON, posição (9 lugares) e cidade do clima vêm do FundoConfig.
+  do Spotify feito; sem ele, pela busca). Cores, partes, JSON, posição (9 lugares), tamanho, monitores, cidade do clima e
+  fundo vêm do FundoConfig.
 - **TemaContexto** — põe no menu novo do clique direito os itens que só apareciam em "Mostrar mais opções" (Git,
   Visual Studio, PhpStorm, 7-Zip, NVIDIA e o que for instalado depois) e o item "Abrir WSL" (Terminal com o PowerShell
   padrão já no WSL, na home). Lê os verbos (`shell\`) e as extensões de menu (`shellex\ContextMenuHandlers`) de
@@ -65,11 +69,14 @@ Autostart: `HKCU\...\Run` (`TemaBarra`, `TemaMenus`, `TemaJanelas`, `TemaContext
 
 `build\build-installer.bat` compila o FundoVivo e o FundoConfig e gera `bin\Wallget-Setup.exe` (Inno Setup 6:
 `winget install JRSoftware.InnoSetup --scope user`). Instala por usuário em `%LOCALAPPDATA%\Programs\Wallget` como
-`Wallget.exe` (o papel de parede, no `HKCU\...\Run`) e `WallgetConfig.exe` (atalho "Wallget" no Iniciar). Se faltar o
+`Wallget.exe` (o papel de parede, no `HKCU\...\Run` já na primeira vez que abre, a não ser que o app desligue) e
+`WallgetConfig.exe` (atalho "Wallget" no Iniciar). A opção "Barra de tarefas" (desmarcada) instala também a
+`TemaBarra.dll`, se não houver outra iniciando com o Windows; numa atualização a DLL nova entra no próximo login. Se faltar o
 HWiNFO (temperatura da CPU) ou a tarefa que reabre ele a cada 11 h (a memória compartilhada da versão grátis desliga
 em 12 h), oferece instalar com `tools\hwinfo-setup.ps1`, o único passo que pede administrador.
 
-No app, nada vai para o papel de parede antes do Salvar; o FundoVivo relê o registro a cada 0,5 s.
+No app, cada mudança já vale no papel de parede e na barra (o FundoVivo e a TemaBarra releem o registro a cada
+segundo); o Salvar mantém, e fechar sem salvar volta tudo ao que estava.
 
 ## Liga/desliga
 
@@ -87,9 +94,10 @@ Textos (REG_SZ) que ficam fora do código:
   `ClimaCidade` é só o nome mostrado no FundoConfig, que escreve os três ao escolher uma cidade.
 - `CorTexto`, `CorTextoSuave`, `CorAnel`, `CorEqualizador`, `CorPico`, `CorJsonChave`, `CorJsonValor`,
   `CorJsonPontuacao` — cores dos widgets (`#RRGGBB`); sem o valor, a cor padrão.
-
-Números (DWORD) dos widgets: `Json` (0 esconde o JSON), `Posicao` (0 a 8, da esquerda para a direita e de cima para
-baixo; padrão 2, em cima à direita) e `PosicaoClima` (0 à esquerda do JSON, 1 em cima, 2 à direita).
+- `FundoTema` — `golden`, `nbhd`, `loop`, `imagem` ou `video`; `FundoImagem` e `FundoVideo` — caminho do arquivo.
+- `MonitoresOcultos` — monitores sem o bloco, pelo nome GDI (`|\\.\DISPLAY2|`).
+- `LogoCor1`, `LogoCor2`, `LogoCor3` — degradê do logo do Iniciar (topo à esquerda, meio, embaixo à direita);
+  sem eles, branco, cinza e preto.
 - `SpotifyClientId` — Client ID do app do Spotify para a próxima música da fila (login uma vez com
   `tools\spotify-login.ps1`; o token fica criptografado em `cache\`).
 
@@ -97,6 +105,18 @@ Luz do quarto (`"light_on": true/false` no JSON, clique no valor): interruptor T
 pela rede local (protocolo 3.3, porta 6668), sem nuvem. Configure uma vez com `tools\tuya-setup.ps1`, que busca a
 chave local na API da Tuya e guarda id + chave + IP criptografados em `cache\tuya-quarto.bin`; sem esse arquivo, a
 linha não aparece.
+
+Números (DWORD) dos widgets e do fundo:
+
+- Partes (0 esconde): `Musica`, `Proxima`, `Equalizador`, `AnelCpu`, `AnelRam`, `AnelGpu`, `AnelRede`; o JSON inteiro
+  (`Json`) e cada campo dele (`JsonUptime`, `JsonData`, `JsonLuz`, `JsonCpu`, `JsonGpu`, `JsonRam`, `JsonMonitores`).
+- `Posicao` (0 a 8, da esquerda para a direita e de cima para baixo; padrão 2, em cima à direita), `PosicaoClima` (0 à
+  esquerda do JSON, 1 em cima, 2 à direita), `Escala` (50 a 200 %), `Margem` (px da borda, padrão 44) e `Sombra`
+  (0 a 100 %, padrão 75).
+- `ClimaUnidade` (1 = °F), `ClimaMaxMin` (0 esconde máxima e mínima), `FundoPausa` (0 não pausa com jogo ou tela
+  cheia), `FundoOndular` (1 ondula a imagem como o golden), `IniciarComWindows` (0 = o Wallget não se põe no Run).
+- Barra: `BlurModo` (0 acrílico, 1 blur, 2 transparente), `BlurRaio` (px do blur, padrão 9) e `BlurVeu` (0 a 255,
+  véu preto por cima; padrão 31).
 
 ## Compilar e recarregar
 
