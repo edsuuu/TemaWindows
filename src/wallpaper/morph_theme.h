@@ -15,7 +15,7 @@ struct MorphTheme {
 
     bool Load(ID3D11Device* device, std::wstring const& path);
     void Update(float time, float monitorWidth, float monitorHeight, float originX, float originY);
-    void Draw(ID3D11DeviceContext* context, float targetWidth, float targetHeight, const float block[4]);
+    void Draw(ID3D11DeviceContext* context, float targetWidth, float targetHeight, const float block[4], float shadow);
 
 private:
     int strips = 0;

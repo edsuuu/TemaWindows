@@ -96,8 +96,9 @@ static std::wstring Brand(DISPLAYCONFIG_TARGET_DEVICE_NAME const& name) {
     return model.empty() ? code : model;
 }
 
-// Monitores ativos da esquerda para a direita: marca e taxa de atualização em uso ("Alienware 240Hz").
-std::vector<std::wstring> ReadMonitors() {
+// Monitores ativos da esquerda para a direita: nome GDI ("\\.\DISPLAY1", o que o papel de parede usa para esconder o
+// bloco num monitor) e marca com a taxa de atualização em uso ("Alienware 240Hz").
+std::vector<std::pair<std::wstring, std::wstring>> ReadMonitorNames() {
     UINT32 pathCount = 0, modeCount = 0;
     if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount) != ERROR_SUCCESS) return {};
 
@@ -105,7 +106,7 @@ std::vector<std::wstring> ReadMonitors() {
     std::vector<DISPLAYCONFIG_MODE_INFO> modes(modeCount);
     if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, paths.data(), &modeCount, modes.data(), nullptr) != ERROR_SUCCESS) return {};
 
-    std::vector<std::pair<LONG, std::wstring>> sorted;
+    std::vector<std::pair<LONG, std::pair<std::wstring, std::wstring>>> sorted;
     for (UINT32 i = 0; i < pathCount; i++) {
         auto const& path = paths[i];
         if (path.sourceInfo.modeInfoIdx >= modeCount) continue;
@@ -113,19 +114,29 @@ std::vector<std::wstring> ReadMonitors() {
         DISPLAYCONFIG_TARGET_DEVICE_NAME name{};
         name.header = {DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME, sizeof name, path.targetInfo.adapterId, path.targetInfo.id};
         DisplayConfigGetDeviceInfo(&name.header);
+        DISPLAYCONFIG_SOURCE_DEVICE_NAME source{};
+        source.header = {DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME, sizeof source, path.sourceInfo.adapterId, path.sourceInfo.id};
+        DisplayConfigGetDeviceInfo(&source.header);
 
         auto rate = path.targetInfo.refreshRate;
         double hertz = rate.Denominator ? double(rate.Numerator) / rate.Denominator : 0;
 
         wchar_t text[128];
         swprintf_s(text, L"%s %.0fHz", Brand(name).c_str(), hertz);
-        sorted.push_back({modes[path.sourceInfo.modeInfoIdx].sourceMode.position.x, text});
+        sorted.push_back({modes[path.sourceInfo.modeInfoIdx].sourceMode.position.x, {source.viewGdiDeviceName, text}});
     }
 
     std::sort(sorted.begin(), sorted.end());
-    std::vector<std::wstring> monitors;
-    for (auto& [x, text] : sorted) monitors.push_back(std::move(text));
+    std::vector<std::pair<std::wstring, std::wstring>> monitors;
+    for (auto& [x, names] : sorted) monitors.push_back(std::move(names));
     return monitors;
+}
+
+// Só os nomes dos monitores, para o JSON.
+std::vector<std::wstring> ReadMonitors() {
+    std::vector<std::wstring> names;
+    for (auto& [device, name] : ReadMonitorNames()) names.push_back(std::move(name));
+    return names;
 }
 
 // Specs do PC para o JSON do painel: processador, placa de vídeo e RAM (tamanho + tipo/velocidade).

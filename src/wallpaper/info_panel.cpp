@@ -20,6 +20,7 @@ constexpr float kWeatherGap = 28;
 struct JsonText {
     std::wstring text;
     std::vector<std::tuple<UINT32, UINT32, int>> runs;
+    int lightRow = -1;
 };
 
 // Largura das linhas do JSON (fonte monoespaçada) que ficam na altura da coluna do clima, de `top` a `bottom`.
@@ -54,54 +55,66 @@ static std::wstring Uptime(ULONGLONG minutes) {
     return Format(L"%llumin", minutes);
 }
 
-// O JSON do painel (uptime, data e hora, luz do quarto, specs do PC e monitores), com a cor de cada pedaço: 0
-// pontuação, 1 chave, 2 string, 4 true (verde suave), 5 false (vermelho suave). A luz (linha 2, clicável) só entra
-// quando o estado é conhecido; enquanto um clique espera o interruptor, o valor vira 1 a 3 pontinhos (`dots`) cinza.
+// O JSON do painel (uptime, data e hora, luz do quarto, specs do PC e monitores, cada um se `show` deixar), com a cor de
+// cada pedaço: 0 pontuação, 1 chave, 2 string, 4 true (verde suave), 5 false (vermelho suave). Uptime e data dividem a
+// primeira linha. A luz (clicável; lightRow = a linha dela) só entra quando o estado é conhecido; enquanto um clique
+// espera o interruptor, o valor vira 1 a 3 pontinhos (`dots`) cinza. Sem nenhum campo, texto vazio.
 static JsonText BuildJson(PcSpecs const& specs, std::vector<std::wstring> const& monitors, SYSTEMTIME const& now, ULONGLONG minutes,
-                          int light, int dots) {
+                          int light, int dots, bool const* show) {
     JsonText json;
+    int row = 0;
     auto add = [&](std::wstring const& piece, int color) {
         json.runs.push_back({(UINT32)json.text.size(), (UINT32)piece.size(), color});
         json.text += piece;
+        row += int(std::count(piece.begin(), piece.end(), L'\n'));
     };
-    auto field = [&](const wchar_t* indent, const wchar_t* key, std::wstring const& value, const wchar_t* end = L",\n") {
-        add(indent, 0);
-        add(L"\"" + std::wstring(key) + L"\"", 1);
+    // Abre um item de um objeto: vírgula depois do anterior (na mesma linha ou na próxima) e a chave.
+    auto key = [&](bool& first, const wchar_t* indent, const wchar_t* name, bool sameLine = false) {
+        add(first ? indent : sameLine ? L", " : std::wstring(L",\n") + indent, 0);
+        first = false;
+        add(L"\"" + std::wstring(name) + L"\"", 1);
         add(L": ", 0);
-        add(value, 2);
-        add(end, 0);
     };
 
+    bool first = true, inner = true;
     add(L"{\n", 0);
-    field(L"  ", L"uptime", JsonString(Uptime(minutes)), L", ");
-    field(L"", L"date", JsonString(Format(L"%02d/%02d/%04d %02d:%02d:%02d", now.wDay, now.wMonth, now.wYear, now.wHour, now.wMinute,
-                                          now.wSecond)));
-    if (light >= 0) {
-        add(L"  ", 0);
-        add(L"\"light_on\"", 1);
-        add(L": ", 0);
+    if (show[FieldUptime]) {
+        key(first, L"  ", L"uptime");
+        add(JsonString(Uptime(minutes)), 2);
+    }
+    if (show[FieldDate]) {
+        key(first, L"  ", L"date", true);
+        add(JsonString(Format(L"%02d/%02d/%04d %02d:%02d:%02d", now.wDay, now.wMonth, now.wYear, now.wHour, now.wMinute, now.wSecond)), 2);
+    }
+    if (show[FieldLight] && light >= 0) {
+        key(first, L"  ", L"light_on");
+        json.lightRow = row;
         add(dots ? std::wstring(dots, L'.') : light ? L"true" : L"false", dots ? 1 : light ? 4 : 5);
-        add(L",\n", 0);
     }
-    add(L"  ", 0);
-    add(L"\"pc\"", 1);
-    add(L": {\n", 0);
-    field(L"    ", L"cpu", JsonString(specs.cpu));
-    field(L"    ", L"gpu", JsonString(specs.gpu));
-    field(L"    ", L"ram", JsonString(specs.ram), monitors.empty() ? L"\n" : L",\n");
-    if (!monitors.empty()) {
-        add(L"    ", 0);
-        add(L"\"monitors\"", 1);
-        add(L": [\n", 0);
-        for (size_t i = 0; i < monitors.size(); i++) {
-            add(L"      ", 0);
-            add(JsonString(monitors[i]), 2);
-            add(i + 1 < monitors.size() ? L",\n" : L"\n", 0);
+    if (show[FieldCpu] || show[FieldGpu] || show[FieldRam] || (show[FieldMonitors] && !monitors.empty())) {
+        key(first, L"  ", L"pc");
+        add(L"{\n", 0);
+        const wchar_t* names[3] = {L"cpu", L"gpu", L"ram"};
+        std::wstring const* values[3] = {&specs.cpu, &specs.gpu, &specs.ram};
+        for (int i = 0; i < 3; i++) {
+            if (!show[FieldCpu + i]) continue;
+            key(inner, L"    ", names[i]);
+            add(JsonString(*values[i]), 2);
         }
-        add(L"    ]\n", 0);
+        if (show[FieldMonitors] && !monitors.empty()) {
+            key(inner, L"    ", L"monitors");
+            add(L"[\n", 0);
+            for (size_t i = 0; i < monitors.size(); i++) {
+                add(L"      ", 0);
+                add(JsonString(monitors[i]), 2);
+                add(i + 1 < monitors.size() ? L",\n" : L"\n", 0);
+            }
+            add(L"    ]", 0);
+        }
+        add(L"\n  }", 0);
     }
-    add(L"  }\n", 0);
-    add(L"}", 0);
+    if (first) return {};
+    add(L"\n}", 0);
     return json;
 }
 
@@ -156,7 +169,7 @@ void InfoPanel::PaintText(std::wstring const& text, IDWriteTextFormat* font, D2D
 }
 
 // Clima em coluna, centralizado em `center`: ícone em cima, a temperatura grande embaixo dele, depois o céu e a
-// máx/mín.
+// máx/mín (sem ela, se vazia).
 void InfoPanel::DrawWeatherColumn(float center, float halfWidth, float top, std::wstring const& temperature, std::wstring const& sky,
                                   std::wstring const& range) {
     float left = center - halfWidth, right = center + halfWidth;
@@ -174,8 +187,8 @@ void InfoPanel::DrawWeatherColumn(float center, float halfWidth, float top, std:
 // 1x por segundo: dados novos (monitores 1x por minuto, para pegar troca de resolução ou de Hz) e, se o texto mudou, o
 // bitmap do bloco (largura = a do bloco do canto). O clima é uma coluna, conforme weatherSide: 2 = logo à direita das
 // linhas do JSON que estão ao lado dele, centralizado na altura do JSON; 0 = à esquerda do JSON; 1 = em cima dele,
-// centralizado. JSON + clima ficam centralizados no bloco, embaixo dos anéis. Com o JSON desligado (showJson), sobra
-// só o clima, na esquerda, no meio ou na direita do bloco.
+// centralizado. JSON + clima ficam centralizados no bloco, embaixo dos anéis. Com o JSON desligado (ou sem nenhum campo),
+// sobra só o clima, na esquerda, no meio ou na direita do bloco. Temperaturas em °C ou °F (ClimaUnidade).
 void InfoPanel::Render(SYSTEMTIME const& now, int width, int dots) {
     if (WeatherVersion() != weatherVersion) {
         weatherVersion = WeatherVersion();
@@ -185,11 +198,15 @@ void InfoPanel::Render(SYSTEMTIME const& now, int width, int dots) {
     if (monitors.empty() || now.wSecond == 0) monitors = ReadMonitors();
 
     bool hasWeather = !std::isnan(weather.temperature) && weather.code >= 0;
-    int light = showJson ? LightState() : -1;
-    JsonText json = showJson ? BuildJson(specs, monitors, now, GetTickCount64() / 60000, light, dots) : JsonText{};
-    std::wstring temperature = hasWeather ? Format(L"%.0f°", weather.temperature) : L"";
+    const int weatherSide = options.weatherSide;
+    auto degrees = [&](double celsius) { return options.fahrenheit ? celsius * 9 / 5 + 32 : celsius; };
+    int light = options.json && options.fields[FieldLight] ? LightState() : -1;
+    JsonText json = options.json ? BuildJson(specs, monitors, now, GetTickCount64() / 60000, light, dots, options.fields) : JsonText{};
+    std::wstring temperature = hasWeather ? Format(L"%.0f°", degrees(weather.temperature)) : L"";
     std::wstring sky = hasWeather ? SkyText(weather.code) : L"";
-    std::wstring range = hasWeather && !std::isnan(weather.maximum) ? Format(L"máx %.0f°  ·  mín %.0f°", weather.maximum, weather.minimum) : L"";
+    std::wstring range = hasWeather && options.range && !std::isnan(weather.maximum)
+                             ? Format(L"máx %.0f°  ·  mín %.0f°", degrees(weather.maximum), degrees(weather.minimum))
+                             : L"";
     std::wstring newKey = json.text + temperature + sky + range + std::to_wstring(weather.code * 2 + weather.day) + std::to_wstring(width) +
                           std::to_wstring(weatherSide);
     if (bitmap && newKey == key) return;
@@ -204,7 +221,8 @@ void InfoPanel::Render(SYSTEMTIME const& now, int width, int dots) {
     for (auto [start, length, color] : json.runs) layout->SetDrawingEffect(jsonColors[color].Get(), {start, length});
     layout->GetMetrics(&metrics);
 
-    float columnHeight = hasWeather ? (kIconSize + kTemperatureRow + kSkyRow + kRangeRow) * scale : 0, gap = kWeatherGap * scale;
+    float columnHeight = hasWeather ? (kIconSize + kTemperatureRow + kSkyRow + (range.empty() ? 0 : kRangeRow)) * scale : 0;
+    float gap = kWeatherGap * scale;
     bool alone = json.text.empty() || !hasWeather, above = !alone && weatherSide == 1;
     int height = int(above ? columnHeight + gap + jsonHeight : std::max(jsonHeight, columnHeight));
     if (height <= 0) {
@@ -237,10 +255,12 @@ void InfoPanel::Render(SYSTEMTIME const& now, int width, int dots) {
         x += widest + gap;
     }
     lightLine = {};
-    if (light >= 0) {
-        size_t start = json.text.find(L'\n', json.text.find(L'\n') + 1) + 1, value = json.text.find(L": ", start) + 2 - start;
-        float lh = kLineHeight * scale, pad = 4 * scale;
-        lightLine = {x + value * charWidth - pad, jsonY + 2 * lh, x + (value + (dots ? dots : light ? 4 : 5)) * charWidth + pad, jsonY + 3 * lh};
+    if (json.lightRow >= 0) {
+        size_t start = 0;
+        for (int row = 0; row < json.lightRow; row++) start = json.text.find(L'\n', start) + 1;
+        size_t value = json.text.find(L": ", start) + 2 - start;
+        float lh = kLineHeight * scale, pad = 4 * scale, top = jsonY + json.lightRow * lh;
+        lightLine = {x + value * charWidth - pad, top, x + (value + (dots ? dots : light ? 4 : 5)) * charWidth + pad, top + lh};
     }
 
     dc->SetTarget(bitmap.Get());
@@ -264,8 +284,8 @@ float InfoPanel::Height() const {
     return bitmap ? kGapBelowRings * scale + bitmapHeight : 0;
 }
 
-// Desenha embaixo dos anéis (a transformação do monitor já está posta): x = borda esquerda da capa da música, y =
-// embaixo das legendas, width = largura do bloco do canto. Clima + JSON são um bitmap refeito só quando o texto muda
+// Desenha embaixo dos anéis (a transformação do monitor já está posta, com o tamanho do bloco: fora de 100% o bitmap é
+// esticado, linear): x = borda esquerda da capa da música, y = embaixo das legendas, width = largura do bloco do canto. Clima + JSON são um bitmap refeito só quando o texto muda
 // (1x por segundo, pelo relógio, e a cada pontinho do carregando da luz) ou a paleta muda; por quadro é um DrawBitmap
 // por monitor, centralizado no bloco (com o clima à esquerda ele pode passar um pouco da largura). Com o mouse em cima
 // do valor da luz, ele ganha um fundo claro arredondado; o retângulo dele fica guardado para a janela de clique.
@@ -301,7 +321,7 @@ void InfoPanel::Draw(ID2D1DeviceContext* screen, float x, float y, float width, 
         brush->SetColor({1, 1, 1, 0.08f});
         screen->FillRoundedRectangle(plate, brush.Get());
     }
-    screen->DrawBitmap(bitmap.Get(), D2D1_RECT_F{x, y, x + bitmapWidth, y + bitmapHeight}, 1, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+    screen->DrawBitmap(bitmap.Get(), D2D1_RECT_F{x, y, x + bitmapWidth, y + bitmapHeight}, 1, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
 }
 
 // Retângulo do valor da luz (true/false) no último desenho (coordenadas do monitor principal), ou vazio sem ele.

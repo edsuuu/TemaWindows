@@ -9,7 +9,7 @@
 static const char kShader[] = R"(
 struct Point { float4 placement; float4 look; float4 logoEdge; };
 StructuredBuffer<Point> points : register(t0);
-cbuffer Constants : register(b0) { float4 block; float2 size; uint pointsPerStrip; float padding; float4 logo; };
+cbuffer Constants : register(b0) { float4 block; float2 size; uint pointsPerStrip; float shadow; float4 logo; };
 struct V {
     float4 pos : SV_Position;
     float offset : OFFSET;
@@ -64,7 +64,7 @@ float4 Surface(float v, float w, float tone, float logoAmount, float2 pixel) {
 // Área escura suave atrás do bloco do canto (a mesma do tema golden).
 float CornerShade(float2 pixel) {
     float2 e = abs(pixel - (block.xy + block.zw) / 2) - (block.zw - block.xy) / 2 - 24 + 40;
-    return 1 - 0.75 * smoothstep(110, -20, length(max(e, 0)) + min(max(e.x, e.y), 0) - 40);
+    return 1 - shadow * smoothstep(110, -20, length(max(e, 0)) + min(max(e.x, e.y), 0) - 40);
 }
 
 // Nas pontas, dois pedaços que se cruzam em degradê somam de volta a cobertura inteira. Saída pré-multiplicada ("por
@@ -310,7 +310,7 @@ void MorphTheme::Update(float time, float monitorWidth, float monitorHeight, flo
 }
 
 // Desenha por cima do que já estiver no alvo (o fundo preto): 2 fitas por faixa, na ordem (a de trás primeiro).
-void MorphTheme::Draw(ID3D11DeviceContext* context, float targetWidth, float targetHeight, const float block[4]) {
+void MorphTheme::Draw(ID3D11DeviceContext* context, float targetWidth, float targetHeight, const float block[4], float shadow) {
     D3D11_MAPPED_SUBRESOURCE mapped;
     if (FAILED(context->Map(pointBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return;
     memcpy(mapped.pData, points.data(), points.size() * 4);
@@ -319,8 +319,8 @@ void MorphTheme::Draw(ID3D11DeviceContext* context, float targetWidth, float tar
     struct {
         float block[4], size[2];
         UINT pointsPerStrip;
-        float padding, logo[4];
-    } values{{block[0], block[1], block[2], block[3]}, {targetWidth, targetHeight}, UINT(pointsPerStrip), 0, {logoX, logoY, logoHalfSide, 0}};
+        float shadow, logo[4];
+    } values{{block[0], block[1], block[2], block[3]}, {targetWidth, targetHeight}, UINT(pointsPerStrip), shadow, {logoX, logoY, logoHalfSide, 0}};
     context->UpdateSubresource(constants.Get(), 0, nullptr, &values, 0, 0);
 
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);

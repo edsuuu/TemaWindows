@@ -89,9 +89,10 @@ static bool AllMonitorsCovered() {
     return true;
 }
 
-// Ninguém está vendo o fundo (tela bloqueada, tela cheia ou tudo coberto)? Então não gasta GPU, som nem rede.
-bool ComputeWallpaperHidden() {
-    return SessionLocked() || FullScreenApp() || AllMonitorsCovered();
+// Ninguém está vendo o fundo (tela bloqueada, tela cheia ou tudo coberto)? Então não gasta GPU, som nem rede. Sem
+// `apps` (FundoPausa = 0) só a tela bloqueada pausa.
+bool ComputeWallpaperHidden(bool apps) {
+    return SessionLocked() || (apps && (FullScreenApp() || AllMonitorsCovered()));
 }
 
 // Publica o estado para as threads de mídia e de clima.

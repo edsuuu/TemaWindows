@@ -18,7 +18,7 @@ bool Enabled(const wchar_t* name) {
 
 // Lê um texto de HKCU\Software\TemaBarra; sem o valor (ou comprido demais), fica o padrão.
 std::wstring SettingText(const wchar_t* name, const wchar_t* fallback) {
-    wchar_t value[256];
+    wchar_t value[1024];
     DWORD size = sizeof value;
 
     if (RegGetValueW(HKEY_CURRENT_USER, kKey, name, RRF_RT_REG_SZ, nullptr, value, &size) != ERROR_SUCCESS) return fallback;
