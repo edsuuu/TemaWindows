@@ -1,10 +1,13 @@
 #include "wallpaper/media.h"
 #include "wallpaper/audio.h"
+#include "wallpaper/http.h"
 #include "wallpaper/timing.h"
 
 #include <shcore.h>
+#include <shlwapi.h>
 #include <wincodec.h>
 #include <wrl/client.h>
+#include <winrt/Windows.Data.Json.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Media.Control.h>
@@ -14,7 +17,10 @@
 #include <mutex>
 #include <thread>
 
+#pragma comment(lib, "shlwapi.lib")
+
 using Microsoft::WRL::ComPtr;
+using namespace winrt::Windows::Data::Json;
 using namespace winrt::Windows::Media::Control;
 
 struct CoverState {
@@ -65,6 +71,33 @@ std::shared_ptr<std::vector<BYTE>> DecodeImage(IStream* input, int size) {
     return SUCCEEDED(converter->CopyPixels(nullptr, size * 4, (UINT)pixels->size(), pixels->data())) ? pixels : nullptr;
 }
 
+// Baixa uma imagem (https://host/caminho) num quadrado de `size` px.
+std::shared_ptr<std::vector<BYTE>> DownloadImage(std::wstring const& url, int size) {
+    size_t hostStart = url.find(L"://"), pathStart = hostStart == std::wstring::npos ? hostStart : url.find(L'/', hostStart + 3);
+    if (pathStart == std::wstring::npos) return nullptr;
+
+    std::wstring host = url.substr(hostStart + 3, pathStart - hostStart - 3);
+    std::string bytes = HttpsRequest(host.c_str(), url.substr(pathStart));
+    ComPtr<IStream> stream;
+    stream.Attach(SHCreateMemStream((const BYTE*)bytes.data(), UINT(bytes.size())));
+    return bytes.empty() ? nullptr : DecodeImage(stream.Get(), size);
+}
+
+// Capa pela busca pública do Deezer (sem login nem chave), para a música de que o Spotify não entrega a capa na sessão
+// de mídia (acontece com algumas). Busca o nome com o primeiro artista (com todos juntos, "MC A, MC B", não acha) e,
+// sem resultado, a busca solta com os dois. Manda ao Deezer só o nome e o artista dessas músicas.
+static std::shared_ptr<std::vector<BYTE>> SearchCover(NowPlaying const& song) {
+    std::wstring artist = song.artist.substr(0, song.artist.find(L", "));
+    for (std::wstring const& query : {L"artist:\"" + artist + L"\" track:\"" + song.title + L"\"", artist + L" " + song.title}) {
+        std::string response = HttpsRequest(L"api.deezer.com", L"/search?limit=1&q=" + std::wstring(winrt::to_hstring(UrlEncode(winrt::to_string(query)))));
+        if (response.empty()) return nullptr;
+
+        auto found = JsonObject::Parse(winrt::to_hstring(response)).GetNamedArray(L"data", JsonArray());
+        if (found.Size()) return DownloadImage(std::wstring(found.GetObjectAt(0).GetNamedObject(L"album").GetNamedString(L"cover_medium")), CoverSize());
+    }
+    return nullptr;
+}
+
 // Capa do álbum que o Spotify entrega na sessão de mídia (um JPEG pequeno), no tamanho da tela.
 static std::shared_ptr<std::vector<BYTE>> DecodeCover(winrt::Windows::Storage::Streams::IRandomAccessStreamReference const& reference) {
     if (!reference) return nullptr;
@@ -77,7 +110,10 @@ static std::shared_ptr<std::vector<BYTE>> DecodeCover(winrt::Windows::Storage::S
 
 // Capa da música atual. Logo depois da troca o Spotify às vezes ainda entrega a capa da música anterior, ou uma pela
 // metade: tenta a cada segundo até ter uma (a partir de 1 s depois da troca), relê aos 3 s e aos 6 s e depois a cada
-// 10 s, e só troca quando a imagem mudou (a mesma imagem não refaz o fade no cartão).
+// 10 s, e só troca quando a imagem mudou (a mesma imagem não refaz o fade no cartão). Sem capa nenhuma aos 4 s, busca
+// uma vez no Deezer.
+// ponytail: a busca roda nesta thread e segura a leitura da música até ~15 s com a internet ruim; thread à parte se
+// isso aparecer.
 static void UpdateCover(GlobalSystemMediaTransportControlsSessionMediaProperties const& properties, NowPlaying const& song, CoverState& cover) {
     std::wstring key = song.title + L"\n" + song.artist;
     if (key != cover.song) {
@@ -92,6 +128,7 @@ static void UpdateCover(GlobalSystemMediaTransportControlsSessionMediaProperties
 
     std::shared_ptr<std::vector<BYTE>> pixels;
     try { pixels = DecodeCover(properties.Thumbnail()); } catch (...) {}
+    if (!pixels && !cover.pixels && attempt == 5) try { pixels = SearchCover(song); } catch (...) {}
     if (pixels && (!cover.pixels || *pixels != *cover.pixels)) cover.pixels = pixels;
 }
 

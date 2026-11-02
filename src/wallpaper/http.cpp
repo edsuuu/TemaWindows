@@ -2,6 +2,8 @@
 
 #include <windows.h>
 #include <winhttp.h>
+#include <cctype>
+#include <cstdio>
 
 #pragma comment(lib, "winhttp.lib")
 
@@ -33,4 +35,15 @@ std::string HttpsRequest(const wchar_t* host, std::wstring const& path, const wc
     for (HINTERNET handle : {request, connection, session})
         if (handle) WinHttpCloseHandle(handle);
     return status == 200 ? response : "";
+}
+
+// Texto (UTF-8) seguro para URL e formulário x-www-form-urlencoded.
+std::string UrlEncode(std::string const& text) {
+    std::string encoded;
+    char hex[4];
+    for (unsigned char c : text) {
+        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') encoded += char(c);
+        else sprintf_s(hex, "%%%02X", c), encoded += hex;
+    }
+    return encoded;
 }
