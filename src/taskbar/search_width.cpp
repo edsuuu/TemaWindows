@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cmath>
 #include <memory>
+#include <vector>
 
 using namespace winrt::Windows::UI::Xaml::Media::Animation;
 
@@ -28,6 +29,38 @@ static double TextWidth(Controls::TextBlock const& text) {
     copy.FontWeight(text.FontWeight());
     copy.Measure({INFINITY, INFINITY});
     return std::ceil(copy.DesiredSize().Width);
+}
+
+// Abre a caixa na hora com os ícones da barra indo junto: o Windows desliza os ícones só ~0,5 s depois de uma mudança
+// de tamanho (animação implícita do Composition em cada item do ItemsRepeater), e nesse meio tempo a caixa aberta (e o
+// campo do SearchHost por cima dela) cobria o Iniciar e o Explorador. Tira as animações dos itens só durante este
+// layout e devolve logo depois.
+static void OpenNow(FrameworkElement const& grid, double width) {
+    FrameworkElement repeater = ParentOf(grid);
+    while (repeater && repeater.Name() != L"TaskbarFrameRepeater") repeater = ParentOf(repeater);
+
+    struct Saved {
+        UIElement item{nullptr};
+        Media::Animation::TransitionCollection transitions{nullptr};
+        ImplicitAnimationCollection implicit{nullptr};
+    };
+    std::vector<Saved> saved;
+    for (int i = 0, count = repeater ? VisualTreeHelper::GetChildrenCount(repeater) : 0; i < count; i++) {
+        auto item = VisualTreeHelper::GetChild(repeater, i).try_as<UIElement>();
+        if (!item) continue;
+        auto visual = ElementCompositionPreview::GetElementVisual(item);
+        Saved s{item, item.Transitions(), visual.ImplicitAnimations()};
+        if (s.transitions) item.Transitions(nullptr);
+        if (s.implicit) visual.ImplicitAnimations(nullptr);
+        saved.push_back(std::move(s));
+    }
+
+    grid.Width(width);
+    grid.UpdateLayout();
+    for (auto const& s : saved) {
+        if (s.transitions) s.item.Transitions(s.transitions);
+        if (s.implicit) ElementCompositionPreview::GetElementVisual(s.item).ImplicitAnimations(s.implicit);
+    }
 }
 
 // Fechada, a caixa fica do tamanho de "Pesquisar" (a margem do texto já traz a lupa à esquerda e o respiro à direita);
@@ -65,10 +98,12 @@ static void Fit(FrameworkElement const& grid, SearchFit& fit) {
     fit.target = target;
     double from = grid.ActualWidth();
     fit.story.Stop();
-    grid.Width(target);
     if (open) {
-        grid.UpdateLayout();
-    } else if (from > 0 && from != target) {
+        OpenNow(grid, target);
+        return;
+    }
+    grid.Width(target);
+    if (from > 0 && from != target) {
         fit.animation.From(from);
         fit.animation.To(target);
         fit.story.Begin();

@@ -391,8 +391,8 @@ static double FreeWidth(FrameworkElement const& grid) {
 // A cada 250 ms: o player aparece na barra de cada monitor sempre que o Spotify tem música, tocando ou pausada
 // (pausada, a onda vira a linha parada), se couber antes do Iniciar: sem espaço, a onda encolhe até kMinWaveWidth e
 // depois sai; com menos ainda, fica a versão compacta, até o texto ficar com kMinInfoWidth. Sem poder aparecer
-// (Player = 0) nem lê o Spotify; em jogo de tela cheia continua (pedido dele). O som é capturado só com alguma onda na tela e a música tocando
-// neste PC; tocando em outro aparelho, a onda dança sozinha.
+// (Player = 0) nem lê o Spotify; em jogo de tela cheia continua (pedido dele). O som é capturado só com alguma onda
+// na tela e a música tocando neste PC; tocando em outro aparelho, a onda dança sozinha.
 static void Tick() {
     HookIslands();
     bool idle = !g_enabled;
