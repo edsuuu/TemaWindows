@@ -51,7 +51,7 @@ Os programas acham `assets\`, `cache\` e `logs\` a partir da pasta acima de `bin
   vermelha nos picos, a ~60 quadros por segundo. A onda sai do centro ou cresce de baixo para cima como no cartão, com
   força e largura ajustáveis (mais larga, barras mais grossas; escolhas
   no app); pausada, fica parada e o player continua. Sem espaço antes do Iniciar, primeiro sai a onda e depois fica a
-  versão compacta (capa, nome, artista e tocar/pausar). Some com o Spotify fechado e com jogo ou app em tela cheia.
+  versão compacta (capa, nome, artista e tocar/pausar). Some com o Spotify fechado; em jogo de tela cheia continua.
   É XAML montado dentro da barra, no `Grid` da `TaskbarFrame`; a mãozinha dos botões vem de um subclass na janela da
   ilha XAML de cada barra.
 - **TemaMenus** — vidro liso no Iniciar, pesquisa, Configurações Rápidas e notificações; Iniciar no estilo do conceito

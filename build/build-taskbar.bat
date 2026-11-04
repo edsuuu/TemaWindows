@@ -1,7 +1,7 @@
 @echo off
 rem TemaBarra.dll (barra de tarefas, dentro do Explorer) -> bin\. O player do Spotify usa a leitura da música e o
-rem equalizador do papel de parede (media, audio e timing), as cores dele (palette) e a mesma conta de tela cheia
-rem (fullscreen); http para buscar a capa que o Spotify não entrega.
+rem equalizador do papel de parede (media, audio e timing), as cores dele (palette) e http para buscar a capa que o
+rem Spotify não entrega.
 setlocal
 call "%~dp0env.bat" || exit /b 1
 set "OBJ=%ROOT%\build\obj\taskbar"
@@ -9,7 +9,7 @@ if not exist "%OBJ%" mkdir "%OBJ%"
 
 cl %CFLAGS% /LD /Fo"%OBJ%/" "%SRC%\taskbar\*.cpp" "%SRC%\common\*.cpp" ^
    "%SRC%\wallpaper\media.cpp" "%SRC%\wallpaper\audio.cpp" "%SRC%\wallpaper\timing.cpp" "%SRC%\wallpaper\palette.cpp" ^
-   "%SRC%\wallpaper\fullscreen.cpp" "%SRC%\wallpaper\http.cpp" ^
+   "%SRC%\wallpaper\http.cpp" ^
    /link /OUT:"%OBJ%\TemaBarra.dll" /IMPLIB:"%OBJ%\TemaBarra.lib" ^
    windowsapp.lib ole32.lib user32.lib advapi32.lib dwmapi.lib shell32.lib shcore.lib windowscodecs.lib comctl32.lib || exit /b 1
 

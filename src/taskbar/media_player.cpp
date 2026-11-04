@@ -3,7 +3,6 @@
 #include "common/registry.h"
 #include "common/xaml_tree.h"
 #include "wallpaper/audio.h"
-#include "wallpaper/fullscreen.h"
 #include "wallpaper/media.h"
 #include "wallpaper/palette.h"
 #include "wallpaper/timing.h"
@@ -11,6 +10,7 @@
 #include <commctrl.h>
 #include <windows.ui.xaml.hosting.desktopwindowxamlsource.h>
 #include <winrt/Windows.Storage.Streams.h>
+#include <winrt/Windows.System.h>
 #include <winrt/Windows.UI.Text.h>
 #include <winrt/Windows.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.Xaml.Controls.Primitives.h>
@@ -120,6 +120,16 @@ static void Remove(Controls::Grid const& grid, UIElement const& child) {
     if (grid.Children().IndexOf(child, index)) grid.Children().RemoveAt(index);
 }
 
+// Mãozinha de volta depois do clique: o botão captura o ponteiro ao apertar e, ao soltar, a ilha põe a seta sem mandar
+// WM_SETCURSOR (que só volta quando o mouse mexe). Põe agora e de novo depois que o XAML termina de tratar o clique.
+static void HandAgain(Controls::Button const& button) {
+    auto hand = [weak = winrt::make_weak(button)] {
+        if (auto b = weak.get(); b && b.IsPointerOver()) SetCursor(LoadCursor(nullptr, IDC_HAND));
+    };
+    hand();
+    winrt::Windows::System::DispatcherQueue::GetForCurrentThread().TryEnqueue(winrt::Windows::System::DispatcherQueuePriority::Low, hand);
+}
+
 // Botão do player: o ícone (Segoe Fluent Icons) num Button sem borda nem fundo, que clareia no hover como os botões da
 // barra e tem nome para o leitor de tela. O clique (ou Enter/Espaço) manda o comando para o Spotify (0 aleatória, 1
 // voltar, 2 tocar/pausar, 3 avançar). Sem o anel de foco, como os outros botões da barra. Com o ponteiro em cima, a
@@ -143,6 +153,9 @@ static Controls::FontIcon AddButton(Player& p, Controls::StackPanel const& row, 
     Automation::AutomationProperties::SetName(button, name);
     button.Click([command](auto&&, auto&&) { SendMediaCommand(command); });
     button.PointerMoved([](auto&&, auto&&) { SetCursor(LoadCursor(nullptr, IDC_HAND)); });
+    auto again = Input::PointerEventHandler([](auto const& sender, auto&&) { HandAgain(sender.template as<Controls::Button>()); });
+    button.AddHandler(UIElement::PointerReleasedEvent(), winrt::box_value(again), true);  // o Button marca como tratado
+    button.AddHandler(UIElement::PointerCaptureLostEvent(), winrt::box_value(again), true);
     row.Children().Append(button);
     p.buttons.push_back(button);
     return icon;
@@ -392,11 +405,11 @@ static double FreeWidth(FrameworkElement const& grid) {
 // A cada 250 ms: o player aparece na barra de cada monitor sempre que o Spotify tem música, tocando ou pausada
 // (pausada, a onda vira a linha parada), se couber antes do Iniciar: sem espaço, a onda encolhe até kMinWaveWidth e
 // depois sai; com menos ainda, fica a versão compacta, até o texto ficar com kMinInfoWidth. Sem poder aparecer
-// (Player = 0, jogo em tela cheia) nem lê o Spotify. O som é capturado só com alguma onda na tela e a música tocando
-// neste PC; tocando em outro aparelho, a onda dança sozinha.
+// (Player = 0) nem lê o Spotify; em jogo de tela cheia continua (pedido dele). O som é capturado só com alguma onda
+// na tela e a música tocando neste PC; tocando em outro aparelho, a onda dança sozinha.
 static void Tick() {
     HookIslands();
-    bool idle = !g_enabled || FullScreenApp();
+    bool idle = !g_enabled;
     g_idle = idle;
     NowPlaying song = CurrentMedia();
     bool show = !idle && !song.title.empty();
