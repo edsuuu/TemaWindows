@@ -3,7 +3,7 @@
 ; e, se escolhida, a barra de tarefas (TemaBarra.dll: blur/transparente e o logo do Iniciar em degradê). Por usuário e
 ; sem administrador; só o passo do HWiNFO (temperatura da CPU) pede elevação, e só aparece quando falta o HWiNFO ou a
 ; tarefa que reabre ele. Gerado por build\build-installer.bat em bin\Wallget-Setup.exe.
-#define Version "1.2.0"
+#define Version "1.2.1"
 
 [Setup]
 AppId=TemaWindows.Wallget
