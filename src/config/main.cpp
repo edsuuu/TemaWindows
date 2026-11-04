@@ -553,7 +553,7 @@ static void Arrange(HWND window) {
             SetDlgItemTextW(window, kWallpaper, running ? L"Reiniciar" : L"Iniciar");
             row(running ? L"Papel de parede rodando" : L"Papel de parede parado", kWallpaper);
         }
-        heading(L"Wallget 1.2.0 · muda na hora, Salvar mantém");
+        heading(L"Wallget 1.2.1 · muda na hora, Salvar mantém");
         break;
     }
 }
