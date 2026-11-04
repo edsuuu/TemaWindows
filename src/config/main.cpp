@@ -66,7 +66,8 @@ constexpr int kPlayer = 585;
 constexpr int kFirstWave = 586;
 constexpr int kStartup = 590;
 constexpr int kHwinfo = 591;
-constexpr int kWaveStrength = 592;
+constexpr int kWaveStrength = 592;  // stepper: 592 a 594
+constexpr int kWallpaper = 595;
 constexpr int kMaxMonitors = 8;
 constexpr UINT kSearchDone = WM_APP + 1;
 
@@ -283,6 +284,33 @@ static std::wstring WallpaperExe() {
     GetModuleFileNameW(nullptr, path, MAX_PATH);
     std::wstring folder(path, wcsrchr(path, L'\\') + 1);
     return GetFileAttributesW((folder + L"Wallget.exe").c_str()) != INVALID_FILE_ATTRIBUTES ? folder + L"Wallget.exe" : folder + L"FundoVivo.exe";
+}
+
+// O papel de parede está rodando? (o mutex dele, criado logo ao abrir)
+static bool WallpaperRunning() {
+    HANDLE mutex = OpenMutexW(SYNCHRONIZE, FALSE, L"Local\\FundoVivo");
+    if (mutex) CloseHandle(mutex);
+    return mutex != nullptr;
+}
+
+// Botão do Sistema: fecha o papel de parede que estiver rodando (achado pela janela da bandeja, seja Wallget.exe ou
+// FundoVivo.exe) e abre de novo; parado, só abre. Espera ele subir para o botão já mostrar "Reiniciar".
+static void RestartWallpaper() {
+    DWORD id = 0;
+    if (HWND tray = FindWindowW(L"WallgetBandeja", nullptr)) GetWindowThreadProcessId(tray, &id);
+    if (HANDLE old = id ? OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, id) : nullptr) {
+        TerminateProcess(old, 0);
+        WaitForSingleObject(old, 5000);  // o mutex só some com ele morto; antes disso a cópia nova sairia na hora
+        CloseHandle(old);
+    }
+    std::wstring exe = WallpaperExe();
+    SHELLEXECUTEINFOW start{sizeof start, SEE_MASK_NOCLOSEPROCESS};
+    start.lpFile = exe.c_str();
+    start.nShow = SW_SHOWNORMAL;
+    if (ShellExecuteExW(&start) && start.hProcess) {
+        WaitForInputIdle(start.hProcess, 5000);
+        CloseHandle(start.hProcess);
+    }
 }
 
 // Inicia com o Windows? (HKCU Run "Wallget")
@@ -516,6 +544,11 @@ static void Arrange(HWND window) {
     case 7:
         row(L"Iniciar com o Windows", kStartup);
         row(HwinfoStatus(), kHwinfo);
+        {
+            bool running = WallpaperRunning();
+            SetDlgItemTextW(window, kWallpaper, running ? L"Reiniciar" : L"Iniciar");
+            row(running ? L"Papel de parede rodando" : L"Papel de parede parado", kWallpaper);
+        }
         heading(L"Wallget 1.2.0 · muda na hora, Salvar mantém");
         break;
     }
@@ -880,7 +913,8 @@ static void RestoreDefaults() {
 
 // Cliques: seções trocam a tela; cores abrem o seletor; temas de cores trocam as 8; interruptores alternam; escolhas
 // escolhem; - e + andam o número; imagem e vídeo abrem o seletor de arquivo; Buscar (ou Enter na caixa da cidade)
-// procura e a lista escolhe a cidade; Reconfigurar roda o hwinfo-setup.ps1 como administrador; Restaurar volta ao
+// procura e a lista escolhe a cidade; Reconfigurar roda o hwinfo-setup.ps1 como administrador; Iniciar/Reiniciar
+// liga o papel de parede de novo; Restaurar volta ao
 // padrão e Salvar mantém. Toda mudança já vale no fundo e na barra (Changed).
 static void Command(HWND window, int id, int code) {
     int part = 0;
@@ -936,6 +970,10 @@ static void Command(HWND window, int id, int code) {
         std::wstring parameters = L"-NoProfile -ExecutionPolicy Bypass -File \"" + ProjectPath(L"tools\\hwinfo-setup.ps1") + L"\"";
         ShellExecuteW(window, L"runas", L"powershell.exe", parameters.c_str(), nullptr, SW_HIDE);
         return;
+    } else if (id == kWallpaper) {
+        RestartWallpaper();
+        relayout = true;
+        changed = false;
     } else if (id == kSearch || (id == IDOK && GetFocus() == GetDlgItem(window, kCity))) {
         Search(window);
         return;
@@ -1127,6 +1165,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     button(L"Onda de baixo para cima", kFirstWave + 1);
     button(L"", kStartup);
     button(L"Reconfigurar", kHwinfo);
+    button(L"Reiniciar", kWallpaper);
     button(L"Restaurar padrão", kRestore);
     EnableWindow(button(L"Salvar", kSave), FALSE);
     SetWindowPos(GetDlgItem(window, kRestore), nullptr, Px(kContent), Px(kHeight - kGap - kButtonHeight), Px(150), Px(kButtonHeight), SWP_NOZORDER);
