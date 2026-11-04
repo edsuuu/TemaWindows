@@ -10,6 +10,7 @@
 #include <commctrl.h>
 #include <windows.ui.xaml.hosting.desktopwindowxamlsource.h>
 #include <winrt/Windows.Storage.Streams.h>
+#include <winrt/Windows.System.h>
 #include <winrt/Windows.UI.Text.h>
 #include <winrt/Windows.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.Xaml.Controls.Primitives.h>
@@ -119,6 +120,16 @@ static void Remove(Controls::Grid const& grid, UIElement const& child) {
     if (grid.Children().IndexOf(child, index)) grid.Children().RemoveAt(index);
 }
 
+// Mãozinha de volta depois do clique: o botão captura o ponteiro ao apertar e, ao soltar, a ilha põe a seta sem mandar
+// WM_SETCURSOR (que só volta quando o mouse mexe). Põe agora e de novo depois que o XAML termina de tratar o clique.
+static void HandAgain(Controls::Button const& button) {
+    auto hand = [weak = winrt::make_weak(button)] {
+        if (auto b = weak.get(); b && b.IsPointerOver()) SetCursor(LoadCursor(nullptr, IDC_HAND));
+    };
+    hand();
+    winrt::Windows::System::DispatcherQueue::GetForCurrentThread().TryEnqueue(winrt::Windows::System::DispatcherQueuePriority::Low, hand);
+}
+
 // Botão do player: o ícone (Segoe Fluent Icons) num Button sem borda nem fundo, que clareia no hover como os botões da
 // barra e tem nome para o leitor de tela. O clique (ou Enter/Espaço) manda o comando para o Spotify (0 aleatória, 1
 // voltar, 2 tocar/pausar, 3 avançar). Sem o anel de foco, como os outros botões da barra. Com o ponteiro em cima, a
@@ -142,6 +153,9 @@ static Controls::FontIcon AddButton(Player& p, Controls::StackPanel const& row, 
     Automation::AutomationProperties::SetName(button, name);
     button.Click([command](auto&&, auto&&) { SendMediaCommand(command); });
     button.PointerMoved([](auto&&, auto&&) { SetCursor(LoadCursor(nullptr, IDC_HAND)); });
+    auto again = Input::PointerEventHandler([](auto const& sender, auto&&) { HandAgain(sender.template as<Controls::Button>()); });
+    button.AddHandler(UIElement::PointerReleasedEvent(), winrt::box_value(again), true);  // o Button marca como tratado
+    button.AddHandler(UIElement::PointerCaptureLostEvent(), winrt::box_value(again), true);
     row.Children().Append(button);
     p.buttons.push_back(button);
     return icon;
