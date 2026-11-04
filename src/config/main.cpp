@@ -66,8 +66,9 @@ constexpr int kPlayer = 585;
 constexpr int kFirstWave = 586;
 constexpr int kStartup = 590;
 constexpr int kHwinfo = 591;
-constexpr int kWaveStrength = 592;  // stepper: 592 a 594
-constexpr int kWallpaper = 595;
+constexpr int kWaveStrength = 592;  // steppers: id a id+2
+constexpr int kWaveWidth = 595;
+constexpr int kWallpaper = 598;
 constexpr int kMaxMonitors = 8;
 constexpr UINT kSearchDone = WM_APP + 1;
 
@@ -177,6 +178,7 @@ static int theme = 0;
 static int barMode = 1;
 static int wave = 0;
 static int waveStrength = 70;
+static int waveWidth = 200;
 static int blurRadius = 9;
 static int veilPercent = 12;
 static DWORD veil = 31;  // BlurVeu como estava (0-255), para não mudar com o arredondamento do %
@@ -192,7 +194,7 @@ static Preview preview;
 const Stepper kSteppers[] = {
     {kSize, &o.size, 50, 200, 10, L"%"},   {kWidth, &o.width, 380, 800, 20, L" px"},     {kMarginStep, &o.margin, 0, 200, 4, L" px"},
     {kShadow, &o.shadow, 0, 100, 5, L"%"}, {kBlurRadius, &blurRadius, 0, 40, 1, L" px"}, {kVeil, &veilPercent, 0, 100, 5, L"%"},
-    {kWaveStrength, &waveStrength, 30, 100, 10, L"%"},
+    {kWaveStrength, &waveStrength, 30, 100, 10, L"%"}, {kWaveWidth, &waveWidth, 100, 400, 20, L" px"},
 };
 
 // DIPs -> pixels na escala do sistema.
@@ -373,6 +375,7 @@ static void Apply() {
     WriteNumber(L"Player", player);
     WriteNumber(L"PlayerOnda", wave);
     WriteNumber(L"PlayerOndaForca", waveStrength);
+    WriteNumber(L"PlayerOndaLargura", waveWidth);
 }
 
 // Tela inteira redesenhada (botões, nomes e o aviso de não salvo).
@@ -539,6 +542,7 @@ static void Arrange(HWND window) {
         if (player) {
             wide(kFirstWave, 2);
             stepper(L"Força da onda", kWaveStrength);
+            stepper(L"Largura da onda", kWaveWidth);
         }
         break;
     case 7:
@@ -909,6 +913,7 @@ static void RestoreDefaults() {
     player = true;
     wave = 0;
     waveStrength = 70;
+    waveWidth = 200;
 }
 
 // Cliques: seções trocam a tela; cores abrem o seletor; temas de cores trocam as 8; interruptores alternam; escolhas
@@ -1080,6 +1085,7 @@ static void LoadSettings() {
     player = Enabled(L"Player");
     wave = Setting(L"PlayerOnda", 0) == 1;
     waveStrength = int(std::clamp<DWORD>(Setting(L"PlayerOndaForca", 70), 30, 100));
+    waveWidth = int(std::clamp<DWORD>(Setting(L"PlayerOndaLargura", 200), 100, 400));
     startup = StartsWithWindows();
 }
 
