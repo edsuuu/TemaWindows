@@ -99,8 +99,9 @@ static void RemoveFocusRing(std::wstring_view type, InstanceHandle handle) {
 }
 
 // Cada elemento novo da árvore XAML da barra: fundo com blur e botão "mostrar área de trabalho" invisível (continua
-// clicável) com Fundo; vidro no painel dos ícones ocultos e na caixa de pesquisa com Vidro; o player do Spotify (sempre:
-// Player liga e desliga na hora) e a ilha XAML de cada barra, para a mãozinha dos botões dele; e os ícones.
+// clicável) com Fundo; vidro no painel dos ícones ocultos e na caixa de pesquisa com Vidro; a caixa de pesquisa do
+// tamanho do texto; o player do Spotify (sempre: Player liga e desliga na hora) e a ilha XAML de cada barra, para a
+// mãozinha dos botões dele; e os ícones.
 void OnElementAdded(ParentChildRelation const&, VisualElement const& element) {
     std::wstring_view type = element.Type ? element.Type : L"", name = element.Name ? element.Name : L"";
     RemoveFocusRing(type, element.Handle);
@@ -117,6 +118,8 @@ void OnElementAdded(ParentChildRelation const&, VisualElement const& element) {
         ApplyToBorder(element.Handle, ApplyOverflowGlass, L"vidro dos ícones ocultos");
     } else if (name == L"BackgroundElement" && Enabled(L"Vidro")) {
         ApplyToBorder(element.Handle, ApplySearchGlassIfSearchBox, L"vidro da pesquisa");
+    } else if (type == L"SearchUx.SearchUI.SearchButtonRootGrid") {
+        ApplySearchWidth(FrameworkElementFromHandle(element.Handle));
     } else if (type == L"Taskbar.TaskbarFrame") {
         ApplyNowAndOnLoad(FrameworkElementFromHandle(element.Handle), AddMediaPlayer, L"player");
     } else if (type == L"Windows.UI.Xaml.Hosting.DesktopWindowXamlSource") {

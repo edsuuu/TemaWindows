@@ -7,8 +7,6 @@
 #include "common/registry.h"
 
 #include <dpapi.h>
-#include <shlwapi.h>
-#include <wrl/client.h>
 #include <winrt/Windows.Data.Json.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>
@@ -18,9 +16,7 @@
 #include <thread>
 
 #pragma comment(lib, "crypt32.lib")
-#pragma comment(lib, "shlwapi.lib")
 
-using Microsoft::WRL::ComPtr;
 using namespace winrt::Windows::Data::Json;
 
 constexpr double kQueueRefresh = 30;
@@ -70,23 +66,12 @@ static void SaveRefreshToken(std::string const& token) {
     if (!data.empty()) std::ofstream(TokenPath(), std::ios::binary | std::ios::trunc).write(data.data(), data.size());
 }
 
-// Texto seguro para um formulário x-www-form-urlencoded.
-static std::string FormEncode(std::string const& text) {
-    std::string encoded;
-    char hex[4];
-    for (unsigned char c : text) {
-        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') encoded += char(c);
-        else sprintf_s(hex, "%%%02X", c), encoded += hex;
-    }
-    return encoded;
-}
-
 // Renova o access token pelo refresh token (PKCE: só o Client ID, sem segredo) e guarda o refresh token novo.
 static bool RenewToken(AccessToken& token) {
     std::string refresh = LoadRefreshToken(), clientId = winrt::to_string(SettingText(L"SpotifyClientId", L""));
     if (refresh.empty() || clientId.empty()) return false;
 
-    std::string body = "grant_type=refresh_token&refresh_token=" + FormEncode(refresh) + "&client_id=" + FormEncode(clientId);
+    std::string body = "grant_type=refresh_token&refresh_token=" + UrlEncode(refresh) + "&client_id=" + UrlEncode(clientId);
     std::string response = HttpsRequest(L"accounts.spotify.com", L"/api/token", L"POST", L"Content-Type: application/x-www-form-urlencoded",
                                         body);
     if (response.empty()) return false;
@@ -144,18 +129,6 @@ static std::wstring SmallCoverUrl(JsonObject const& item) {
     return url;
 }
 
-// Baixa a capa (https://i.scdn.co/image/...) no tamanho da linha da próxima música.
-static std::shared_ptr<std::vector<BYTE>> DownloadCover(std::wstring const& url) {
-    size_t hostStart = url.find(L"://"), pathStart = hostStart == std::wstring::npos ? hostStart : url.find(L'/', hostStart + 3);
-    if (pathStart == std::wstring::npos) return nullptr;
-
-    std::wstring host = url.substr(hostStart + 3, pathStart - hostStart - 3);
-    std::string bytes = HttpsRequest(host.c_str(), url.substr(pathStart));
-    ComPtr<IStream> stream;
-    stream.Attach(SHCreateMemStream((const BYTE*)bytes.data(), UINT(bytes.size())));
-    return bytes.empty() ? nullptr : DecodeImage(stream.Get(), NextCoverSize());
-}
-
 // Lê a fila (GET /me/player/queue) e devolve a primeira música dela, com a música atual que o Spotify informou.
 static NextTrack FetchNext() {
     std::string response = SpotifyGet(L"/v1/me/player/queue");
@@ -170,7 +143,7 @@ static NextTrack FetchNext() {
     next.after = json.GetNamedObject(L"currently_playing").GetNamedString(L"name");
     next.title = item.GetNamedString(L"name");
     next.artist = ArtistsOf(item);
-    next.cover = DownloadCover(SmallCoverUrl(item));
+    next.cover = DownloadImage(SmallCoverUrl(item), NextCoverSize());
     return next;
 }
 
@@ -221,7 +194,7 @@ void OpenInSpotify(bool artist) {
 
         if (uri.empty()) {
             std::wstring text = artist ? song.artist : song.title + L" " + song.artist;
-            uri = L"spotify:search:" + std::wstring(winrt::to_hstring(FormEncode(winrt::to_string(text))));
+            uri = L"spotify:search:" + std::wstring(winrt::to_hstring(UrlEncode(winrt::to_string(text))));
         }
         AllowSetForegroundWindow(ASFW_ANY);
         ShellExecuteW(nullptr, nullptr, uri.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
